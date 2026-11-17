@@ -277,3 +277,102 @@ end $$;
 -- UPDATE events need the full row so read receipts carry read_at.
 alter table public.messages replica identity full;
 alter table public.profiles replica identity full;
+
+-- ============================================================================
+--  v2 · media (ảnh / tệp / tin nhắn thoại), nhãn dán, sửa & thu hồi tin nhắn
+--  Chạy lại phần này (hoặc cả file) sau khi đã có schema v1 cũng được.
+-- ============================================================================
+
+alter table public.messages
+    add column if not exists kind            text        not null default 'text',
+    add column if not exists sticker         text,
+    add column if not exists attachment_path text,
+    add column if not exists attachment_name text,
+    add column if not exists attachment_mime text,
+    add column if not exists attachment_size bigint,
+    add column if not exists duration_ms     integer,
+    add column if not exists edited_at       timestamptz,
+    add column if not exists deleted_at      timestamptz;
+
+do $$
+begin
+    alter table public.messages
+        add constraint messages_kind_check
+        check (kind in ('text', 'sticker', 'image', 'file', 'voice'));
+exception
+    when duplicate_object then null;
+end $$;
+
+-- Tin đính kèm có thể không có chữ, nhưng tin văn bản thì phải có nội dung.
+alter table public.messages drop constraint if exists messages_body_check;
+alter table public.messages
+    add constraint messages_body_check
+    check (
+        char_length(body) <= 4000
+        and (kind <> 'text' or char_length(body) > 0)
+    );
+
+-- Chỉ người gửi mới được sửa / thu hồi tin của mình (đọc "đã xem" thì ai cũng được).
+create or replace function public.guard_message_update()
+returns trigger
+language plpgsql
+as $$
+begin
+    if (new.body is distinct from old.body
+        or new.edited_at is distinct from old.edited_at
+        or new.deleted_at is distinct from old.deleted_at
+        or new.attachment_path is distinct from old.attachment_path) then
+        if auth.uid() is not null and auth.uid() <> old.sender_id then
+            raise exception 'Chỉ người gửi mới được sửa hoặc thu hồi tin nhắn';
+        end if;
+    end if;
+    return new;
+end $$;
+
+drop trigger if exists messages_guard_update on public.messages;
+create trigger messages_guard_update
+    before update on public.messages
+    for each row execute function public.guard_message_update();
+
+-- ------------------------------------------------------------- ảnh/tệp/voice --
+-- Bucket riêng tư; mỗi file nằm trong thư mục "<conversation_id>/…" nên policy
+-- chỉ cần so thư mục đầu với cuộc trò chuyện của mình.
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('chat-media', 'chat-media', false, 26214400)   -- 25 MB
+on conflict (id) do update
+    set public = false,
+        file_size_limit = excluded.file_size_limit;
+
+drop policy if exists chat_media_read   on storage.objects;
+drop policy if exists chat_media_write  on storage.objects;
+drop policy if exists chat_media_change on storage.objects;
+drop policy if exists chat_media_remove on storage.objects;
+
+create policy chat_media_read on storage.objects
+    for select to authenticated
+    using (
+        bucket_id = 'chat-media'
+        and (storage.foldername(name))[1] = public.my_conversation()::text
+    );
+
+create policy chat_media_write on storage.objects
+    for insert to authenticated
+    with check (
+        bucket_id = 'chat-media'
+        and (storage.foldername(name))[1] = public.my_conversation()::text
+    );
+
+create policy chat_media_change on storage.objects
+    for update to authenticated
+    using (
+        bucket_id = 'chat-media'
+        and (storage.foldername(name))[1] = public.my_conversation()::text
+    );
+
+create policy chat_media_remove on storage.objects
+    for delete to authenticated
+    using (
+        bucket_id = 'chat-media'
+        and (storage.foldername(name))[1] = public.my_conversation()::text
+    );

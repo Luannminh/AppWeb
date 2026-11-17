@@ -15,6 +15,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages ORDER BY sentAt ASC, clientId ASC")
     suspend fun getAll(): List<Message>
 
+    /** Local full-text-ish search over the cached conversation. */
+    @Query("SELECT * FROM messages WHERE body LIKE :pattern ORDER BY sentAt ASC LIMIT 200")
+    fun search(pattern: String): Flow<List<Message>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(message: Message)
 
@@ -23,6 +27,12 @@ interface MessageDao {
 
     @Query("UPDATE messages SET status = :status WHERE clientId = :clientId")
     suspend fun setStatus(clientId: String, status: String)
+
+    @Query("UPDATE messages SET body = :body, editedAt = :editedAt WHERE clientId = :clientId")
+    suspend fun updateBody(clientId: String, body: String, editedAt: Long)
+
+    @Query("UPDATE messages SET deletedAt = :deletedAt WHERE clientId = :clientId")
+    suspend fun softDelete(clientId: String, deletedAt: Long)
 
     /** Marks my messages as read by the partner, up to a given Postgres id. */
     @Query(

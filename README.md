@@ -28,6 +28,12 @@ project Supabase của **bạn**, dữ liệu nằm trong database của bạn.
 | Gửi không mất tin | tin đang chờ / gửi lỗi / bấm để gửi lại, chống trùng bằng `client_id` |
 | Đăng nhập | **email + mật khẩu** hoặc **ẩn danh** (một chạm, không cần email) |
 | Ghép đôi | nhập mã 6 ký tự của người kia; mỗi cuộc trò chuyện đúng 2 người |
+| Ảnh / tệp | gửi ảnh (tự nén còn ~1600px), tệp bất kỳ tới 25 MB, tải về và mở bằng app khác |
+| Tin nhắn thoại | giữ mic để ghi, thả ra là gửi; nghe lại ngay trong bong bóng chat |
+| Nhãn dán | bộ 24 emoji gửi một chạm, hiển thị cỡ lớn |
+| Sửa / thu hồi | nhấn giữ tin của mình → **Sửa** (có nhãn "đã sửa") hoặc **Thu hồi** (người kia thấy "Tin nhắn đã được thu hồi") |
+| Tìm kiếm | icon 🔍 trên header, lọc tin nhắn trong cuộc trò chuyện |
+| Thông báo | tin mới khi app ở nền → notification + số đếm chưa đọc trên badge |
 | Giao diện | tiếng Việt, sáng/tối, vuốt để cuộn, bong bóng chat, avatar màu |
 
 ## 1. Chuẩn bị Supabase (5 phút)
@@ -138,15 +144,32 @@ public.conversations; update public.profiles set conversation_id = null;`.
 | `422 Signup requires a valid password` khi bấm Ẩn danh | chưa bật *Allow anonymous sign-ins* trong Authentication → Providers |
 | `Không tìm thấy hồ sơ` | chưa chạy `supabase/schema.sql` (hoặc chạy thiếu phần trigger) |
 | Đăng nhập báo sai mật khẩu dù đúng | tài khoản tạo lúc bật *Confirm email* → mở mail xác nhận trước |
+| Gửi ảnh/tệp báo lỗi 403 | chưa chạy phần Storage của `schema.sql` (bucket `chat-media` + policy) |
+| Gửi tệp báo "quá lớn" | giới hạn 25 MB mỗi tệp (bucket cũng đặt `file_size_limit`) |
+| Không ghi được tin nhắn thoại | cần quyền micro — từ chối rồi thì vào Cài đặt Android → Ứng dụng → TwoChat → Quyền |
+| Không thấy thông báo | Android 13+ cần quyền thông báo; app chỉ báo khi đang ở nền (chưa có push khi app bị tắt hẳn) |
 | Tin nhắn không hiện ngay, chỉ sau vài giây | Realtime chưa bật cho bảng: chạy lại `schema.sql` (phần realtime) hoặc chạy `alter publication supabase_realtime add table public.messages;` |
 | `Không có quyền truy cập` (403) | sai/thiếu `anon key`, hoặc đã đổi policy — chạy lại `schema.sql` |
 | Mã mời "không đúng" | mã gồm 6 ký tự, không có chữ I/O/0/1; nhập đúng mã đang hiện trên máy người kia |
 | Bấm Ẩn danh nhưng muốn giữ tài khoản | tài khoản ẩn danh gắn với máy; đăng xuất là mất, hãy dùng email + mật khẩu nếu cần giữ |
 
+## 6b. Ảnh, tệp, tin nhắn thoại
+
+- Tệp nằm trong bucket **private** `chat-media`, mỗi file trong thư mục `<conversation_id>/`.
+  Policy của Storage so thư mục đầu với `my_conversation()`, nên chỉ hai người trong cuộc trò chuyện
+  tải được; app tải qua `GET /storage/v1/object/authenticated/...` kèm JWT.
+- Ảnh được nén về cạnh dài tối đa 1600px (JPEG 85%) trước khi tải lên, cache trong `cacheDir/media`.
+- Tin nhắn thoại: `MediaRecorder` AAC → `.m4a`, gửi kèm `duration_ms`; phát bằng `MediaPlayer`.
+- Tin nhắn mang `kind` (`text` / `sticker` / `image` / `file` / `voice`) + metadata đính kèm; sửa và
+  thu hồi là **soft delete** (`edited_at`, `deleted_at`) để cả hai bên cùng thấy trạng thái, và
+  trigger `guard_message_update` chặn việc sửa tin của người khác.
+
 ## 7. Giới hạn đã biết
 
 - Đúng hai người mỗi cuộc trò chuyện (đúng như thiết kế), không nhóm, không danh bạ.
-- Ảnh/file: chưa hỗ trợ (schema đã sẵn sàng để thêm Storage sau này).
-- Thông báo đẩy (push) khi app đóng: chưa có — cần FCM.
-- Nội dung tin nhắn không mã hoá đầu-cuối; Supabase (bạn) đọc được trong database.
-- Lịch sử tải 300 tin gần nhất mỗi lần mở cuộc trò chuyện.
+- **Push khi app bị tắt hẳn: chưa có** (cần Firebase/FCM + Edge Function). Hiện thông báo chỉ hiện
+  khi tiến trình còn sống ở nền.
+- Nội dung tin nhắn **không mã hoá đầu-cuối**; Supabase (bạn) đọc được trong database, và ảnh/tệp
+  cũng nằm trên Storage của bạn.
+- Chưa có gọi thoại/video (cần WebRTC + TURN server).
+- Lịch sử tải 300 tin gần nhất mỗi lần mở cuộc trò chuyện; tìm kiếm chỉ trên 300 tin đã tải.

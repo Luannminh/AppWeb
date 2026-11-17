@@ -89,12 +89,18 @@ class SupabaseGateway(private val sessionStore: SessionStore) {
     suspend fun refreshMessages(conversationId: String): List<RemoteMessage> =
         api.messages(conversationId)
 
-    suspend fun sendMessage(
-        clientId: String,
-        conversationId: String,
-        senderId: String,
-        body: String,
-    ): RemoteMessage = api.sendMessage(conversationId, senderId, clientId, body)
+    suspend fun sendMessage(outgoing: OutgoingMessage): RemoteMessage = api.sendMessage(outgoing)
+
+    suspend fun editMessage(messageId: Long, senderId: String, body: String) =
+        api.editMessage(messageId, senderId, body)
+
+    suspend fun deleteMessage(messageId: Long, senderId: String) =
+        api.deleteMessage(messageId, senderId)
+
+    suspend fun uploadMedia(path: String, mime: String, bytes: ByteArray) =
+        api.uploadMedia(path, mime, bytes)
+
+    suspend fun downloadMedia(path: String): ByteArray = api.downloadMedia(path)
 
     suspend fun markRead(conversationId: String, myId: String, upToId: Long) =
         api.markRead(conversationId, myId, upToId)
