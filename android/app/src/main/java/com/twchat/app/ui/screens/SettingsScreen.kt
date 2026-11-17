@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,8 +19,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.IosShare
+import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -41,6 +41,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,28 +49,21 @@ import com.twchat.app.ui.AppUiState
 import com.twchat.app.ui.AppViewModel
 import com.twchat.app.ui.components.Avatar
 import com.twchat.app.ui.components.ColorSwatchRow
-import androidx.compose.ui.graphics.Color
+import com.twchat.app.util.Transcript
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(
-    state: AppUiState,
-    vm: AppViewModel,
-) {
+fun SettingsScreen(state: AppUiState, vm: AppViewModel) {
+    val me = state.me ?: return
+    val partner = state.partner
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val profile = state.profile
 
-    var meName by rememberSaveable(profile.meName) { mutableStateOf(profile.meName) }
-    var partnerName by rememberSaveable(profile.partnerName) { mutableStateOf(profile.partnerName) }
-    var meColor by rememberSaveable(profile.meColor) { mutableStateOf(profile.meColor) }
-    var partnerColor by rememberSaveable(profile.partnerColor) { mutableStateOf(profile.partnerColor) }
-    var confirmClear by remember { mutableStateOf(false) }
+    var name by rememberSaveable(me.displayName) { mutableStateOf(me.displayName) }
+    var color by rememberSaveable(me.color) { mutableStateOf(me.color) }
+    var confirmUnpair by remember { mutableStateOf(false) }
 
-    val hasChanges = meName.trim() != profile.meName ||
-        partnerName.trim() != profile.partnerName ||
-        meColor != profile.meColor ||
-        partnerColor != profile.partnerColor
+    val hasChanges = name.trim() != me.displayName || color != me.color
 
     Column(
         modifier = Modifier
@@ -102,47 +96,113 @@ fun SettingsScreen(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            SectionCard(title = "Hai người") {
-                PersonEditor(
-                    name = meName,
-                    onNameChange = { meName = it },
-                    color = meColor,
-                    onColorChange = { meColor = it },
-                    label = "Tên của bạn",
-                    placeholder = "Ví dụ: Minh",
+            SectionCard(title = "Hồ sơ của bạn") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(name = me.displayName, color = Color(me.color), size = 46.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = me.displayName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "@${me.username}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Tên hiển thị") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
                 )
-                PersonEditor(
-                    name = partnerName,
-                    onNameChange = { partnerName = it },
-                    color = partnerColor,
-                    onColorChange = { partnerColor = it },
-                    label = "Tên người ấy",
-                    placeholder = "Ví dụ: An",
-                )
+                ColorSwatchRow(selected = color, onSelect = { color = it })
                 Button(
-                    onClick = {
-                        vm.saveProfile(meName, partnerName, meColor, partnerColor)
-                        Toast.makeText(context, "Đã lưu", Toast.LENGTH_SHORT).show()
-                    },
-                    enabled = hasChanges && meName.isNotBlank() && partnerName.isNotBlank(),
+                    onClick = { vm.updateProfile(name, color) },
+                    enabled = hasChanges && name.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                 ) {
-                    Text("Lưu thay đổi")
+                    Text("Lưu hồ sơ")
                 }
+            }
+
+            partner?.let { mate ->
+                SectionCard(title = "Người ấy") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(name = mate.displayName, color = Color(mate.color), size = 46.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = mate.displayName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = if (state.live.partnerOnline) "Đang hoạt động" else "Ngoại tuyến",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { confirmUnpair = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PersonRemove,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Huỷ ghép đôi", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            SectionCard(title = "Kết nối") {
+                InfoRow(label = "Máy chủ", value = state.session.serverUrl)
+                InfoRow(
+                    label = "Trạng thái",
+                    value = when {
+                        !state.live.connected -> "Mất kết nối — đang thử lại…"
+                        state.live.partnerOnline -> "Đã kết nối · người ấy đang online"
+                        else -> "Đã kết nối"
+                    },
+                )
+                OutlinedButton(
+                    onClick = { vm.logout() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Icon(Icons.Rounded.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Đăng xuất")
+                }
+                Text(
+                    text = "Muốn đổi máy chủ thì đăng xuất trước, rồi nhập địa chỉ mới ở màn hình đăng nhập.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
             }
 
             SectionCard(title = "Dữ liệu") {
                 Text(
-                    text = "${state.messages.size} tin nhắn · nằm trong bộ nhớ máy này",
+                    text = "${state.messages.size} tin nhắn trong bộ nhớ đệm của máy này",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedButton(
                     onClick = {
-                        scope.launch {
-                            shareText(context, vm.transcriptForSharing())
-                        }
+                        val transcript = Transcript.build(state.messages, me, partner)
+                        shareText(context, transcript)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -151,36 +211,19 @@ fun SettingsScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("Xuất / chia sẻ cuộc trò chuyện")
                 }
-                OutlinedButton(
-                    onClick = { confirmClear = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.DeleteOutline,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Xoá toàn bộ tin nhắn", color = MaterialTheme.colorScheme.error)
-                }
+                Text(
+                    text = "Tin nhắn được lưu trên máy chủ của bạn và giữ một bản đệm trên máy để mở " +
+                        "nhanh, xem được cả khi mất mạng.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
             }
 
             SectionCard(title = "Về TwoChat") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(name = profile.meName, color = Color(profile.meColor), size = 36.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Avatar(
-                        name = profile.partnerName,
-                        color = Color(profile.partnerColor),
-                        size = 36.dp,
-                    )
-                }
                 Text(
-                    text = "Phiên bản 1.0 · Kotlin + Jetpack Compose\n" +
-                        "Không có tài khoản, không có máy chủ, không thu thập dữ liệu. " +
-                        "Gỡ ứng dụng là mất cuộc trò chuyện, nên hãy xuất bản sao nếu cần.",
+                    text = "Phiên bản 1.1 · Kotlin + Jetpack Compose\n" +
+                        "Nhắn tin thời gian thực qua WebSocket, dữ liệu nằm trên máy chủ bạn tự host. " +
+                        "Không quảng cáo, không theo dõi.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -188,34 +231,36 @@ fun SettingsScreen(
         }
     }
 
-    if (confirmClear) {
+    if (confirmUnpair) {
         AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("Xoá toàn bộ tin nhắn?") },
-            text = { Text("Tất cả tin nhắn sẽ bị xoá khỏi máy này và không thể khôi phục.") },
+            onDismissRequest = { confirmUnpair = false },
+            title = { Text("Huỷ ghép đôi?") },
+            text = {
+                Text(
+                    "Toàn bộ tin nhắn giữa hai người sẽ bị xoá khỏi máy chủ và khỏi máy này. " +
+                        "Bạn vẫn có thể ghép đôi lại sau.",
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        vm.clearConversation()
-                        confirmClear = false
-                        Toast.makeText(context, "Đã xoá cuộc trò chuyện", Toast.LENGTH_SHORT).show()
+                        confirmUnpair = false
+                        vm.unpair()
+                        Toast.makeText(context, "Đã huỷ ghép đôi", Toast.LENGTH_SHORT).show()
                     },
                 ) {
-                    Text("Xoá", color = MaterialTheme.colorScheme.error)
+                    Text("Huỷ ghép đôi", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmClear = false }) { Text("Huỷ") }
+                TextButton(onClick = { confirmUnpair = false }) { Text("Giữ nguyên") }
             },
         )
     }
 }
 
 @Composable
-private fun SectionCard(
-    title: String,
-    content: @Composable () -> Unit,
-) {
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -237,26 +282,14 @@ private fun SectionCard(
 }
 
 @Composable
-private fun PersonEditor(
-    name: String,
-    onNameChange: (String) -> Unit,
-    color: Long,
-    onColorChange: (Long) -> Unit,
-    label: String,
-    placeholder: String,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = name,
-            onValueChange = onNameChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            leadingIcon = { Avatar(name = name.ifBlank { "?" }, color = Color(color), size = 28.dp) },
+private fun InfoRow(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        ColorSwatchRow(selected = color, onSelect = onColorChange)
+        Text(text = value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

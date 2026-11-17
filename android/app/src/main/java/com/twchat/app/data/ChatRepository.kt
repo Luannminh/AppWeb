@@ -1,27 +1,59 @@
 package com.twchat.app.data
 
+import com.twchat.app.data.remote.RemoteMessage
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Single source of truth for the conversation. The ViewModel never touches the
- * DAO directly so the storage backend can be swapped later (for example for a
- * synced Room database) without touching the UI.
+ * Local cache in front of the server. Writing through Room (instead of holding
+ * messages in memory) is what makes the app feel like a real messenger: the list
+ * survives restarts, pending messages stay visible and retries reuse the same
+ * [Message.clientId] so the server never duplicates a message.
  */
 class ChatRepository(private val dao: MessageDao) {
 
     fun observeMessages(): Flow<List<Message>> = dao.observeAll()
 
-    suspend fun send(sender: String, body: String, sentAt: Long = System.currentTimeMillis()) {
-        val text = body.trim()
-        if (text.isEmpty()) return
-        dao.insert(Message(sender = sender, body = text, sentAt = sentAt))
+    suspend fun snapshot(): List<Message> = dao.getAll()
+
+    suspend fun addPending(clientId: String, body: String, myId: Long) {
+        dao.upsert(
+            Message(
+                clientId = clientId,
+                serverId = null,
+                senderId = myId,
+                body = body,
+                sentAt = System.currentTimeMillis(),
+                status = MessageStatus.PENDING,
+            ),
+        )
     }
 
-    suspend fun setReaction(id: Long, reaction: String?) = dao.updateReaction(id, reaction)
+    suspend fun markPending(clientId: String) = dao.setStatus(clientId, MessageStatus.PENDING)
 
-    suspend fun delete(id: Long) = dao.deleteById(id)
+    suspend fun markFailed(clientId: String) = dao.setStatus(clientId, MessageStatus.FAILED)
 
-    suspend fun clear() = dao.deleteAll()
+    suspend fun confirmSent(clientId: String, remote: RemoteMessage) {
+        dao.upsert(remote.toEntity().copy(clientId = clientId))
+    }
 
-    suspend fun snapshot(): List<Message> = dao.getAll()
+    suspend fun store(remote: RemoteMessage) = dao.upsert(remote.toEntity())
+
+    suspend fun storeAll(remotes: List<RemoteMessage>) {
+        if (remotes.isNotEmpty()) dao.upsertAll(remotes.map { it.toEntity() })
+    }
+
+    suspend fun applyReadReceipt(myId: Long, upToServerId: Long, readAt: Long) =
+        dao.applyReadReceipt(myId, upToServerId, readAt)
+
+    suspend fun clear() = dao.clear()
 }
+
+private fun RemoteMessage.toEntity(): Message = Message(
+    clientId = clientId.ifBlank { "srv-$id" },
+    serverId = id,
+    senderId = senderId,
+    body = body,
+    sentAt = createdAt,
+    readAt = readAt,
+    status = MessageStatus.SENT,
+)

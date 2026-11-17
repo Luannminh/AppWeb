@@ -10,8 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.twchat.app.ui.screens.AuthScreen
 import com.twchat.app.ui.screens.ChatScreen
-import com.twchat.app.ui.screens.OnboardingScreen
+import com.twchat.app.ui.screens.PairScreen
 import com.twchat.app.ui.screens.SettingsScreen
 import com.twchat.app.ui.theme.TwoChatTheme
 
@@ -25,13 +26,15 @@ fun TwoChatApp(viewModel: AppViewModel = viewModel()) {
             color = MaterialTheme.colorScheme.background,
         ) {
             val route = when {
-                !state.profile.onboarded -> "onboarding"
-                state.screen == Screen.Settings -> "settings"
+                !state.isLoggedIn -> "auth"
+                !state.isPaired -> "pair"
+                state.extras.screen == Screen.Settings -> "settings"
                 else -> "chat"
             }
             Crossfade(targetState = route, animationSpec = tween(220), label = "screen") { screen ->
                 when (screen) {
-                    "onboarding" -> OnboardingScreen(onDone = viewModel::completeOnboarding)
+                    "auth" -> AuthScreen(state = state, vm = viewModel)
+                    "pair" -> PairScreen(state = state, vm = viewModel)
                     "settings" -> SettingsScreen(state = state, vm = viewModel)
                     else -> ChatScreen(state = state, vm = viewModel)
                 }

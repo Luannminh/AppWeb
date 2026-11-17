@@ -1,8 +1,10 @@
 package com.twchat.app.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,9 +17,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.twchat.app.data.Message
@@ -32,10 +35,19 @@ fun MessageBubble(
     accent: Color,
     maxWidth: Dp,
     onLongPress: (Message) -> Unit,
+    onRetry: (Message) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val bubbleColor = if (isMine) accent else MaterialTheme.colorScheme.surfaceVariant
-    val textColor = if (isMine) accent.readableOn() else MaterialTheme.colorScheme.onSurfaceVariant
+    val bubbleColor = when {
+        !isMine -> MaterialTheme.colorScheme.surfaceVariant
+        message.isFailed -> MaterialTheme.colorScheme.errorContainer
+        else -> accent
+    }
+    val textColor = if (isMine && !message.isFailed) {
+        accent.readableOn()
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
 
     Column(
         modifier = modifier
@@ -46,6 +58,7 @@ fun MessageBubble(
         Surface(
             modifier = Modifier
                 .widthIn(max = maxWidth)
+                .alpha(if (message.isPending) 0.65f else 1f)
                 .clip(bubbleShape(isMine))
                 .combinedClickable(
                     onClick = { },
@@ -60,33 +73,54 @@ fun MessageBubble(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 style = MaterialTheme.typography.bodyLarge,
                 color = textColor,
-                overflow = TextOverflow.Clip,
             )
         }
 
         Row(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            message.reaction?.let { emoji ->
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 1.dp,
-                ) {
-                    Text(
-                        text = emoji,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
+            if (isMine && message.isFailed) {
+                Text(
+                    text = "Gửi lại",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onRetry(message) }
+                        .padding(horizontal = 2.dp, vertical = 1.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textDecoration = TextDecoration.Underline,
+                )
             }
             Text(
                 text = TimeFormat.time(message.sentAt),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             )
+            if (isMine) {
+                when {
+                    message.isPending -> Text(
+                        text = "Đang gửi…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+
+                    message.isRead -> Text(
+                        text = "Đã xem",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+
+                    message.isFailed -> Unit
+
+                    else -> Text(
+                        text = "Đã gửi",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                }
+            }
         }
     }
 }
@@ -100,7 +134,7 @@ private fun bubbleShape(isMine: Boolean): RoundedCornerShape = if (isMine) {
 /** Small pill that separates days in the list. */
 @Composable
 fun DayLabel(label: String, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.layout.Box(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),

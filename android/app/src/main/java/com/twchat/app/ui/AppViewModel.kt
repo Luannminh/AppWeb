@@ -6,158 +6,341 @@ import androidx.lifecycle.viewModelScope
 import com.twchat.app.data.ChatDatabase
 import com.twchat.app.data.ChatRepository
 import com.twchat.app.data.Message
-import com.twchat.app.data.Profile
-import com.twchat.app.data.ProfileStore
-import com.twchat.app.data.Sender
-import kotlinx.coroutines.flow.Flow
+import com.twchat.app.data.Person
+import com.twchat.app.data.Session
+import com.twchat.app.data.SessionStore
+import com.twchat.app.data.remote.AuthResult
+import com.twchat.app.data.remote.RealtimeClient
+import com.twchat.app.data.remote.SocketEvent
+import com.twchat.app.data.remote.TwoChatApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 enum class Screen { Chat, Settings }
 
-data class AppUiState(
-    val profile: Profile = Profile(),
-    val messages: List<Message> = emptyList(),
-    val query: String = "",
-    val isSearching: Boolean = false,
-    val sendAsPartner: Boolean = false,
-    val screen: Screen = Screen.Chat,
-    val ready: Boolean = false,
+/** Volatile connection state: presence, typing bubble, socket health. */
+data class LiveState(
+    val connected: Boolean = false,
+    val partnerOnline: Boolean = false,
+    val partnerLastSeen: Long = 0L,
+    val typingUntil: Long = 0L,
 ) {
-    /** Name and colour of whoever the next message will be sent as. */
-    val activeName: String get() = if (sendAsPartner) profile.partnerName else profile.meName
-    val activeColor: Long get() = if (sendAsPartner) profile.partnerColor else profile.meColor
+    fun isTyping(now: Long = System.currentTimeMillis()): Boolean = typingUntil > now
+}
 
-    val partnerName: String get() = profile.partnerName
-    val partnerColor: Long get() = profile.partnerColor
+/** One-shot UI signals (snackbars, spinners) and the current sub-screen. */
+data class UiExtras(
+    val loading: Boolean = false,
+    val error: String? = null,
+    val notice: String? = null,
+    val screen: Screen = Screen.Chat,
+)
+
+data class AppUiState(
+    val session: Session = Session(),
+    val messages: List<Message> = emptyList(),
+    val live: LiveState = LiveState(),
+    val extras: UiExtras = UiExtras(),
+) {
+    val me: Person? get() = session.me
+    val partner: Person? get() = session.partner
+    val isLoggedIn: Boolean get() = session.isLoggedIn
+    val isPaired: Boolean get() = session.partner != null
 }
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = ChatRepository(ChatDatabase.getInstance(application).messageDao())
-    private val profileStore = ProfileStore(application)
+    private val sessionStore = SessionStore(application)
+    private val api = TwoChatApi()
+    private val realtime = RealtimeClient(api)
 
-    private val query = MutableStateFlow("")
-    private val isSearching = MutableStateFlow(false)
-    private val sendAsPartner = MutableStateFlow(false)
-    private val screen = MutableStateFlow(Screen.Chat)
+    private val live = MutableStateFlow(LiveState())
+    private val extras = MutableStateFlow(UiExtras())
 
-    private val profile = profileStore.profile
-        .stateIn(viewModelScope, SharingStarted.Eagerly, Profile())
+    private val session = sessionStore.session
+        .stateIn(viewModelScope, SharingStarted.Eagerly, Session())
 
-    private val allMessages = repository.observeMessages()
+    private val messages = repository.observeMessages()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val controls: Flow<Controls> =
-        combine(query, isSearching, sendAsPartner, screen) { q, searching, asPartner, current ->
-            Controls(q, searching, asPartner, current)
-        }
+    private var startedToken: String? = null
 
     val uiState: StateFlow<AppUiState> =
-        combine(profile, allMessages, controls) { profile, messages, controls ->
-            AppUiState(
-                profile = profile,
-                messages = if (controls.query.isBlank()) {
-                    messages
-                } else {
-                    messages.filter { it.body.contains(controls.query, ignoreCase = true) }
-                },
-                query = controls.query,
-                isSearching = controls.isSearching,
-                sendAsPartner = controls.sendAsPartner,
-                screen = controls.screen,
-                ready = true,
-            )
+        combine(session, messages, live, extras) { session, messages, live, extras ->
+            AppUiState(session = session, messages = messages, live = live, extras = extras)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppUiState())
 
-    // ---------------------------------------------------------------- composing
+    init {
+        viewModelScope.launch {
+            session.collect { current ->
+                api.baseUrl = current.serverUrl
+                api.token = current.token
+                if (current.token == null) {
+                    if (startedToken != null) {
+                        startedToken = null
+                        realtime.stop()
+                    }
+                } else if (current.token != startedToken) {
+                    startedToken = current.token
+                    realtime.start()
+                    refreshConversation()
+                }
+            }
+        }
+        viewModelScope.launch {
+            realtime.events.collect { event -> handleSocketEvent(event) }
+        }
+    }
+
+    // ------------------------------------------------------------------- auth
+
+    fun login(serverUrl: String, username: String, password: String) = guarded {
+        val url = normalizeServerUrl(serverUrl)
+        require(username.isNotBlank()) { "Nhập tên đăng nhập" }
+        require(password.isNotEmpty()) { "Nhập mật khẩu" }
+        prepareConnection(url)
+        val result = api.login(username.trim().lowercase(), password)
+        completeAuth(url, result)
+    }
+
+    fun register(serverUrl: String, username: String, password: String, displayName: String) = guarded {
+        val url = normalizeServerUrl(serverUrl)
+        require(username.isNotBlank()) { "Nhập tên đăng nhập" }
+        require(password.length >= 6) { "Mật khẩu cần ít nhất 6 ký tự" }
+        prepareConnection(url)
+        val result = api.register(username.trim().lowercase(), password, displayName.trim())
+        completeAuth(url, result)
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            runCatching { api.logout() }
+            realtime.stop()
+            startedToken = null
+            repository.clear()
+            sessionStore.clearAuth()
+            live.value = LiveState()
+            extras.update { UiExtras() }
+        }
+    }
+
+    private suspend fun completeAuth(serverUrl: String, result: AuthResult) {
+        api.token = result.token
+        repository.clear()
+        sessionStore.saveAuth(serverUrl, result.token, result.me, result.partner)
+        if (result.partner != null) refreshConversation()
+    }
+
+    private fun prepareConnection(url: String) {
+        api.baseUrl = url
+        api.token = null
+    }
+
+    // ---------------------------------------------------------------- pairing
+
+    fun pair(code: String) = guarded {
+        val trimmed = code.trim().uppercase()
+        require(trimmed.length == 6) { "Mã mời gồm 6 ký tự" }
+        val partner = api.pair(trimmed)
+        repository.clear()
+        sessionStore.savePartner(partner)
+        refreshConversation()
+        extras.update { it.copy(notice = "Đã ghép đôi 🎉") }
+    }
+
+    fun unpair() = guarded {
+        api.unpair()
+        repository.clear()
+        sessionStore.savePartner(null)
+        live.update { it.copy(partnerOnline = false, typingUntil = 0) }
+        extras.update { it.copy(screen = Screen.Chat, notice = "Đã huỷ ghép đôi") }
+    }
+
+    // --------------------------------------------------------------- composing
 
     fun send(text: String) {
         val body = text.trim()
         if (body.isEmpty()) return
-        val sender = if (sendAsPartner.value) Sender.PARTNER else Sender.ME
-        viewModelScope.launch { repository.send(sender, body) }
+        val me = session.value.me ?: return
+        if (session.value.partner == null) return
+        val clientId = UUID.randomUUID().toString()
+        viewModelScope.launch {
+            repository.addPending(clientId, body, me.id)
+            deliver(clientId, body)
+        }
     }
 
-    fun toggleSendAs() {
-        sendAsPartner.value = !sendAsPartner.value
+    fun retry(message: Message) {
+        viewModelScope.launch {
+            repository.markPending(message.clientId)
+            deliver(message.clientId, message.body)
+        }
     }
 
-    // -------------------------------------------------------------- message ops
-
-    fun toggleReaction(message: Message, emoji: String) {
-        val next = if (message.reaction == emoji) null else emoji
-        viewModelScope.launch { repository.setReaction(message.id, next) }
+    private suspend fun deliver(clientId: String, body: String) {
+        try {
+            val remote = api.sendMessage(body, clientId)
+            repository.confirmSent(clientId, remote)
+        } catch (error: Throwable) {
+            repository.markFailed(clientId)
+            extras.update { it.copy(error = error.message ?: "Không gửi được tin nhắn") }
+        }
     }
 
-    fun deleteMessage(message: Message) {
-        viewModelScope.launch { repository.delete(message.id) }
+    fun sendTyping() {
+        if (realtime.isConnected) {
+            realtime.sendTyping()
+        } else {
+            viewModelScope.launch { runCatching { api.sendTyping() } }
+        }
     }
 
-    fun clearConversation() {
-        viewModelScope.launch { repository.clear() }
-    }
-
-    suspend fun transcriptForSharing(): String =
-        com.twchat.app.util.Transcript.build(
-            messages = repository.snapshot(),
-            profile = profile.value,
-        )
-
-    // ------------------------------------------------------------ search & nav
-
-    fun setQuery(value: String) {
-        query.value = value
-    }
-
-    fun toggleSearch() {
-        val next = !isSearching.value
-        isSearching.value = next
-        if (!next) query.value = ""
-    }
-
-    fun openSettings() {
-        screen.value = Screen.Settings
-    }
-
-    fun closeSettings() {
-        screen.value = Screen.Chat
+    fun markRead() {
+        val me = session.value.me ?: return
+        val last = messages.value.lastOrNull { it.senderId != me.id && it.serverId != null } ?: return
+        val serverId = last.serverId ?: return
+        if (realtime.isConnected) {
+            realtime.sendRead(serverId)
+        } else {
+            viewModelScope.launch { runCatching { api.markRead(serverId) } }
+        }
     }
 
     // ---------------------------------------------------------------- profile
 
-    fun completeOnboarding(meName: String, partnerName: String, meColor: Long, partnerColor: Long) {
-        saveProfile(meName, partnerName, meColor, partnerColor, onboarded = true)
+    fun updateProfile(displayName: String, color: Long) = guarded {
+        val updated = api.updateProfile(displayName.trim().ifBlank { null }, color)
+        if (updated != null) sessionStore.saveMe(updated)
+        extras.update { it.copy(notice = "Đã lưu hồ sơ") }
     }
 
-    fun saveProfile(
-        meName: String,
-        partnerName: String,
-        meColor: Long,
-        partnerColor: Long,
-        onboarded: Boolean = true,
-    ) {
-        viewModelScope.launch {
-            profileStore.save(
-                Profile(
-                    meName = meName.trim().ifEmpty { Profile.DEFAULT_ME_NAME },
-                    partnerName = partnerName.trim().ifEmpty { Profile.DEFAULT_PARTNER_NAME },
-                    meColor = meColor,
-                    partnerColor = partnerColor,
-                    onboarded = onboarded,
-                ),
-            )
+    // ------------------------------------------------------------ navigation
+
+    fun openSettings() {
+        extras.update { it.copy(screen = Screen.Settings) }
+    }
+
+    fun closeSettings() {
+        extras.update { it.copy(screen = Screen.Chat) }
+    }
+
+    fun dismissError() {
+        extras.update { it.copy(error = null) }
+    }
+
+    fun dismissNotice() {
+        extras.update { it.copy(notice = null) }
+    }
+
+    // ------------------------------------------------------------ realtime
+
+    private suspend fun handleSocketEvent(event: SocketEvent) {
+        val me = session.value.me
+        val partnerId = session.value.partner?.id
+        when (event) {
+            SocketEvent.Connected -> live.update { it.copy(connected = true) }
+            SocketEvent.Disconnected -> live.update { it.copy(connected = false) }
+            SocketEvent.Unauthorized -> handleUnauthorized()
+
+            is SocketEvent.Hello -> {
+                repository.storeAll(event.messages)
+                sessionStore.saveMe(event.me)
+                sessionStore.savePartner(event.partner)
+                live.update {
+                    it.copy(
+                        connected = true,
+                        partnerOnline = event.partner?.online ?: false,
+                        partnerLastSeen = event.partner?.lastSeen ?: 0L,
+                    )
+                }
+            }
+
+            is SocketEvent.Incoming -> {
+                repository.store(event.message)
+                if (me != null && event.message.senderId != me.id && event.message.id > 0) {
+                    if (realtime.isConnected) realtime.sendRead(event.message.id)
+                    else runCatching { api.markRead(event.message.id) }
+                }
+            }
+
+            is SocketEvent.Read -> if (me != null && event.userId == partnerId) {
+                repository.applyReadReceipt(me.id, event.lastMessageId, event.readAt)
+            }
+
+            is SocketEvent.Typing -> if (event.userId == partnerId) {
+                live.update { it.copy(typingUntil = System.currentTimeMillis() + 3_000) }
+            }
+
+            is SocketEvent.Presence -> if (event.userId == partnerId) {
+                live.update { it.copy(partnerOnline = event.online, partnerLastSeen = event.lastSeen) }
+            }
+
+            is SocketEvent.Paired -> {
+                repository.clear()
+                sessionStore.savePartner(event.partner)
+                refreshConversation()
+                extras.update { it.copy(notice = "Đã ghép đôi 🎉") }
+            }
+
+            SocketEvent.Unpaired -> {
+                repository.clear()
+                sessionStore.savePartner(null)
+                live.update { it.copy(partnerOnline = false, typingUntil = 0) }
+                extras.update { it.copy(notice = "Đã huỷ ghép đôi") }
+            }
+
+            is SocketEvent.ProfileUpdated -> if (event.user?.id == partnerId) {
+                sessionStore.savePartner(event.user)
+            }
         }
     }
 
-    private data class Controls(
-        val query: String,
-        val isSearching: Boolean,
-        val sendAsPartner: Boolean,
-        val screen: Screen,
-    )
+    private suspend fun handleUnauthorized() {
+        realtime.stop()
+        startedToken = null
+        repository.clear()
+        sessionStore.clearAuth()
+        live.value = LiveState()
+        extras.update {
+            it.copy(error = "Phiên đăng nhập đã hết hạn, đăng nhập lại nhé", screen = Screen.Chat)
+        }
+    }
+
+    private suspend fun refreshConversation() {
+        runCatching {
+            val snapshot = api.conversation()
+            repository.storeAll(snapshot.messages)
+            sessionStore.saveMe(snapshot.me)
+            sessionStore.savePartner(snapshot.partner)
+        }
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private fun guarded(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            extras.update { it.copy(loading = true, error = null) }
+            try {
+                block()
+            } catch (error: Throwable) {
+                extras.update { it.copy(error = error.message ?: "Có lỗi xảy ra") }
+            } finally {
+                extras.update { it.copy(loading = false) }
+            }
+        }
+    }
+
+    private fun normalizeServerUrl(raw: String): String {
+        var url = raw.trim()
+        require(url.isNotEmpty()) { "Nhập địa chỉ máy chủ" }
+        if (!url.startsWith("http://") && !url.startsWith("https://")) url = "http://$url"
+        return url.trimEnd('/')
+    }
 }

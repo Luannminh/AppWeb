@@ -1,0 +1,19 @@
+{
+  "name": "twochat-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Realtime backend for TwoChat (REST + WebSocket, JSON file storage)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "smoke": "node test/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

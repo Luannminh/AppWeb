@@ -1,79 +1,115 @@
-# TwoChat — app chat riêng cho hai người (Android, offline)
+# TwoChat — nhắn tin thời gian thực cho hai người
 
-Một ứng dụng Android native viết bằng **Kotlin + Jetpack Compose**: cuộc trò chuyện
-1-1 chỉ của hai người, **toàn bộ dữ liệu nằm trên máy** (Room/SQLite + DataStore).
-Không tài khoản, không máy chủ, không quyền mạng.
+Messenger thu nhỏ, tự host: một **app Android native** (Kotlin + Jetpack Compose) và một
+**server Node.js** (REST + WebSocket) chạy trên máy của bạn. Hai người đăng ký tài khoản,
+ghép đôi bằng mã mời, rồi nhắn tin realtime: tin đến ngay, có “Đã xem”, “Đang nhập…”,
+trạng thái online, gửi lỗi thì bấm gửi lại.
 
-> Ứng dụng nằm trong thư mục [`android/`](android/). Đây là project Gradle mở trực
-> tiếp bằng Android Studio.
+```
+android/   app Android (Kotlin, Compose, Room cache, OkHttp + WebSocket)
+server/    Node.js: REST API + WebSocket + web client chạy luôn trên server
+```
 
 ## Tính năng
 
 | | |
 |---|---|
-| 💬 **Chat hai chiều** | Bong bóng tin nhắn trái/phải, tách ngày (Hôm nay / Hôm qua / Ngày 3 tháng 6) |
-| 🙋 **Đổi người gửi** | Nhấn vào dòng “Gửi với tên …” ngay trên ô nhập để chuyển giữa hai người — phù hợp khi cả hai dùng chung một máy |
-| ❤️ **Thả cảm xúc** | Nhấn giữ một tin nhắn → thả ❤️ 😂 😍 😢 👍, sao chép hoặc xoá |
-| 🔍 **Tìm kiếm** | Lọc tin nhắn ngay trong cuộc trò chuyện |
-| 👤 **Cá nhân hoá** | Tên + màu chủ đạo riêng cho từng người, có màn hình chào lần đầu |
-| 📤 **Xuất / chia sẻ** | Kết xuất toàn bộ hội thoại ra văn bản và chia sẻ qua ứng dụng khác |
-| 🌙 **Sáng / tối** | Theo cài đặt hệ thống, cùng bảng màu ấm |
-| 🔒 **Riêng tư** | Không có `INTERNET` permission, không analytics, gỡ app là mất dữ liệu |
+| ⚡ **Realtime** | Tin nhắn đi qua WebSocket, hiện ngay ở máy kia (< 1 giây), có tự kết nối lại |
+| ✓✓ **Đã xem** | Server ghi nhận người nhận đã đọc tới tin nào, hiện “Đã xem” dưới tin của bạn |
+| ✍️ **Đang nhập…** | Báo cho người kia biết bạn đang gõ, tự tắt sau ~3 giây |
+| 🟢 **Online / last seen** | Chấm xanh trong header, “Hoạt động 5 phút trước” khi offline |
+| 📨 **Gửi tin cậy** | Tin hiện ngay (Đang gửi…), `clientId` chống trùng khi retry, lỗi mạng thì “Gửi lại” |
+| 💾 **Cache offline** | Room giữ hội thoại trên máy: mở app là thấy lịch sử, mất mạng vẫn đọc được |
+| 🔗 **Ghép đôi bằng mã** | Mỗi tài khoản có mã 6 ký tự, nhập mã của người kia là xong |
+| 👤 **Hồ sơ** | Tên hiển thị + màu riêng, đổi được trong Cài đặt |
+| 🌙 **Sáng / tối** | Theo cài đặt hệ thống |
+| 🧾 **Xuất hội thoại** | Kết xuất văn bản và chia sẻ qua app khác |
+| 🌐 **Web client** | Server tự phục vụ một bản web (cùng API) để chat thử trên trình duyệt |
 
-## Công nghệ
+Chưa có (cố ý, để giữ code gọn): gửi ảnh/file, thông báo đẩy khi app bị tắt (cần FCM),
+gọi thoại, nhóm nhiều người.
 
-- Kotlin 1.9.24, Jetpack Compose (BOM 2024.06.00), Material 3
-- Room 2.6.1 + KSP — lưu tin nhắn
-- DataStore Preferences — lưu hồ sơ hai người
-- ViewModel + StateFlow, kiến trúc một chiều (UI state duy nhất)
-- `minSdk 26`, `targetSdk 34`, Java 17
-
-## Mở / build
+## Chạy server
 
 ```bash
-# Cách 1: Android Studio (Ladybug trở lên, JDK 17)
-#   File → Open… → chọn thư mục android/  → Sync → Run 'app'
-
-# Cách 2: dòng lệnh (cần Android SDK + JDK 17)
-cd android
-./gradlew assembleDebug          # APK: app/build/outputs/apk/debug/app-debug.apk
-./gradlew installDebug           # cài lên máy/emulator đang kết nối
-./gradlew test                   # unit test (định dạng ngày giờ, gom nhóm tin nhắn)
+cd server
+npm install
+npm start          # http://0.0.0.0:3000  (web client ở "/")
+npm run smoke      # test đầu-cuối: đăng ký, ghép đôi, tin nhắn, đã xem, typing, presence
 ```
 
-Workflow [`.github/workflows/android.yml`](.github/workflows/android.yml) build APK
-debug trên GitHub Actions và đính kèm vào Artifacts của mỗi lần chạy.
+Biến môi trường: `PORT` (mặc định 3000), `HOST`, `DATA_FILE` (mặc định `server/data/twochat.json`).
 
-## Cấu trúc
+Docker:
 
+```bash
+cd server
+docker build -t twochat-server .
+docker run -p 3000:3000 -v twochat-data:/data twochat-server
 ```
-android/app/src/main/java/com/twchat/app/
-├── MainActivity.kt              # điểm vào, edge-to-edge
-├── data/                        # lớp dữ liệu thuần Kotlin
-│   ├── Message.kt               # entity Room + hằng số người gửi
-│   ├── MessageDao.kt            # truy vấn
-│   ├── ChatDatabase.kt          # Room database (singleton)
-│   ├── ChatRepository.kt        # cửa duy nhất cho tầng UI
-│   ├── Profile.kt               # hồ sơ hai người
-│   └── ProfileStore.kt          # DataStore
-├── ui/
-│   ├── AppViewModel.kt          # state duy nhất + hành động
-│   ├── ChatItems.kt             # gom tin nhắn thành dòng danh sách (+ chèn tách ngày)
-│   ├── TwoChatApp.kt            # điều hướng màn hình
-│   ├── components/              # Avatar, bong bóng, ô nhập, header, sheet cảm xúc…
-│   ├── screens/                 # Onboarding, Chat, Settings
-│   └── theme/                   # màu, typography, shape
-└── util/                        # TimeFormat, Transcript (xuất văn bản)
+
+- Mã nguồn: `server/src/index.js` (routes + WebSocket), `store.js` (lưu JSON), `auth.js` (scrypt + token).
+- Dữ liệu là một file JSON, ghi sau mỗi thay đổi (debounce) — đủ cho 2 người, dễ backup.
+- Web client: `server/public/` (HTML/CSS/JS thuần, không build step).
+
+## Chạy app Android
+
+```bash
+# Android Studio (Ladybug+, JDK 17): File → Open… → chọn thư mục android/ → Run 'app'
+cd android && ./gradlew assembleDebug    # APK: app/build/outputs/apk/debug/
+./gradlew test                            # unit test: gom nhóm theo ngày, định dạng giờ…
 ```
+
+**Địa chỉ máy chủ** nhập ngay trên màn hình đăng nhập (mục “Máy chủ”):
+
+| Thiết bị | Địa chỉ |
+|---|---|
+| Emulator | `http://10.0.2.2:3000` (mặc định) |
+| Máy thật cùng Wi-Fi | `http://<IP LAN của máy tính>:3000`, ví dụ `http://192.168.1.10:3000` |
+| Server công khai | `https://chat.example.com` (nên dùng HTTPS → app tự dùng `wss://`) |
+
+App đã bật `usesCleartextTraffic` để chat được với server HTTP trong LAN khi phát triển.
+Khi đưa lên Internet, hãy đặt sau reverse proxy có HTTPS (Caddy/Nginx) và **tắt** cleartext.
+
+### Thử nhanh trong trình duyệt
+
+Web client ở địa chỉ của server. Mở hai cửa sổ (một cửa sổ ẩn danh), tạo hai tài khoản,
+nhập mã mời của nhau, rồi chat — realtime, “Đã xem”, “Đang nhập…” hoạt động y như app.
+
+## API
+
+Tất cả dưới `/api`, JSON, xác thực bằng `Authorization: Bearer <token>`.
+
+| Method | Path | Việc |
+|---|---|---|
+| POST | `/auth/register` | `{username, password, displayName}` → `{token, user, partner}` |
+| POST | `/auth/login` | `{username, password}` → `{token, user, partner}` |
+| POST | `/auth/logout` | huỷ token hiện tại |
+| GET | `/me` | `{user, partner}` |
+| GET | `/pair/code` | mã mời của bạn |
+| POST | `/pair` | `{code}` → ghép đôi |
+| POST | `/pair/reset` | huỷ ghép đôi (xoá hội thoại) |
+| GET | `/conversation` | `{user, partner, messages[]}` (400 tin gần nhất) |
+| POST | `/messages` | `{body, clientId}` → tin đã lưu (clientId chống trùng) |
+| POST | `/read` | `{lastMessageId}` → đánh dấu đã xem |
+| POST | `/typing` | báo đang nhập |
+| POST | `/profile` | `{displayName?, color?}` |
+| GET | `/health` | kiểm tra sống |
+
+WebSocket: `ws(s)://<host>/ws?token=<token>`. Server gửi `hello`, `message`, `read`,
+`typing`, `presence`, `paired`, `unpaired`, `profile`; client gửi `typing`, `read`, `ping`.
+
+## Kiểm thử
+
+- `server/test/smoke.mjs` — 16 bước end-to-end (REST + WebSocket), chạy bằng `npm run smoke`.
+- `android/app/src/test/` — JUnit: `ChatItemsTest`, `TimeFormatTest`, `RelativeTimeTest`.
+- GitHub Actions: `.github/workflows/server.yml` (smoke test) và `android.yml` (unit test + APK debug).
 
 ## Ghi chú
 
-- Vì dữ liệu chọn **offline**, app không gửi tin qua mạng: hai người dùng chung máy
-  (hoặc dùng như một cuốn nhật ký trò chuyện). Muốn đồng bộ hai điện thoại sau này,
-  chỉ cần thay phần thân của `ChatRepository` bằng một nguồn có server — UI không
-  phải sửa.
-- Mã nguồn được viết trong môi trường không có Android SDK/JDK nên **chưa được biên
-  dịch thử** ở đây; hãy chạy `./gradlew test` và `assembleDebug` ở máy có Android
-  Studio để xác nhận. Phiên bản thư viện đã chọn là cặp tương thích ổn định
-  (Kotlin 1.9.24 ↔ Compose compiler 1.5.14 ↔ AGP 8.5.2 ↔ Gradle 8.7).
-- Xem trước thiết kế (bản mô phỏng HTML, không phải app): [`docs/preview.html`](docs/preview.html).
+- App chưa được biên dịch trong môi trường soạn code này (không có Android SDK). Nếu
+  `./gradlew assembleDebug` báo lỗi, gửi log để sửa — server đã được chạy và test thật.
+- Bản quyền hình ảnh/emoji không liên quan; icon app là vector tự vẽ.
+- Muốn có thông báo khi app đóng: thêm Firebase Cloud Messaging ở server (gửi push khi có
+  tin mới) và đăng ký token ở app — kiến trúc hiện tại đã tách sẵn phần gửi tin trong
+  `ChatRepository`/`AppViewModel` để gắn vào.

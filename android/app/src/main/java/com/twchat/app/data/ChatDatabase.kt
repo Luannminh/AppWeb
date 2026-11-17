@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [Message::class], version = 1, exportSchema = false)
+@Database(entities = [Message::class], version = 2, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
 
     abstract fun messageDao(): MessageDao
@@ -22,7 +22,11 @@ abstract class ChatDatabase : RoomDatabase() {
                     context.applicationContext,
                     ChatDatabase::class.java,
                     DB_NAME,
-                ).build().also { instance = it }
+                )
+                    // The cache can always be rebuilt from the server.
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    .also { instance = it }
             }
     }
 }

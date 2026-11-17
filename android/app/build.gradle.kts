@@ -75,6 +75,7 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.datastore.preferences)
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
 }

@@ -14,7 +14,7 @@ sealed interface ChatItem {
     }
 
     data class Bubble(val message: Message) : ChatItem {
-        override val key: String = "msg-${message.id}"
+        override val key: String = "msg-${message.clientId}"
     }
 }
 
@@ -33,7 +33,7 @@ object ChatItems {
         val items = ArrayList<ChatItem>(messages.size + 2)
         var lastDay: LocalDate? = null
         messages
-            .sortedWith(compareBy({ it.sentAt }, { it.id }))
+            .sortedWith(compareBy({ it.sentAt }, { it.clientId }))
             .forEach { message ->
                 val day = TimeFormat.day(message.sentAt, zone)
                 if (day != lastDay) {
