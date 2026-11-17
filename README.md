@@ -101,7 +101,9 @@ WebSocket: `ws(s)://<host>/ws?token=<token>`. Server gửi `hello`, `message`, `
 
 ## Kiểm thử
 
-- `server/test/smoke.mjs` — 16 bước end-to-end (REST + WebSocket), chạy bằng `npm run smoke`.
+- `server/test/smoke.mjs` — 16 bước end-to-end (REST + WebSocket): `npm run smoke`.
+- `server/test/web-client.mjs` — chạy web client thật trong jsdom: đăng ký → ghép đôi → nhận tin
+  realtime → gửi tin → “Đã xem” → presence: `npm run test:web` (hoặc `npm test` cho cả hai).
 - `android/app/src/test/` — JUnit: `ChatItemsTest`, `TimeFormatTest`, `RelativeTimeTest`.
 - GitHub Actions: `.github/workflows/server.yml` (smoke test) và `android.yml` (unit test + APK debug).
 

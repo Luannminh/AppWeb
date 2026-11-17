@@ -11,6 +11,7 @@ const state = {
   authMode: "login",
   socket: null,
   socketAttempts: 0,
+  pollTimer: null,
   lastReadSentAt: 0,
   reconnectTimer: null,
 };
@@ -189,6 +190,7 @@ function logoutLocal() {
   state.messages = [];
   state.outbox = [];
   localStorage.removeItem(TOKEN_KEY);
+  stopPolling();
   if (state.socket) {
     state.socket.onclose = null;
     state.socket.close();
@@ -454,6 +456,32 @@ function renderThread(forceScroll = false) {
   if (forceScroll || distanceFromBottom < 90) thread.scrollTop = thread.scrollHeight;
 }
 
+// ------------------------------------------------------- polling fallback
+
+function startPolling() {
+  if (state.pollTimer) return;
+  state.pollTimer = setInterval(async () => {
+    if (!state.token || state.socket) return;
+    try {
+      const result = await api("/api/conversation");
+      if (result.partner) state.partner = result.partner;
+      for (const message of result.messages || []) upsertMessage(message);
+      if (state.partner) {
+        renderChrome();
+        renderThread();
+      }
+    } catch {
+      /* keep trying */
+    }
+  }, 3000);
+}
+
+function stopPolling() {
+  if (!state.pollTimer) return;
+  clearInterval(state.pollTimer);
+  state.pollTimer = null;
+}
+
 // ------------------------------------------------------------------- websocket
 
 function connectSocket() {
@@ -465,6 +493,7 @@ function connectSocket() {
 
   socket.addEventListener("open", () => {
     state.socketAttempts = 0;
+    stopPolling();
   });
 
   socket.addEventListener("message", (event) => {
@@ -480,6 +509,9 @@ function connectSocket() {
   socket.addEventListener("close", () => {
     state.socket = null;
     if (!state.token) return;
+    // The preview proxies and some corporate networks drop WebSockets, so keep
+    // the conversation fresh over REST until the socket is back.
+    startPolling();
     const delay = Math.min(15000, 700 * 2 ** state.socketAttempts);
     state.socketAttempts += 1;
     state.reconnectTimer = setTimeout(connectSocket, delay);
@@ -489,6 +521,7 @@ function connectSocket() {
 function handleSocketEvent(event) {
   switch (event.type) {
     case "hello": {
+      stopPolling();
       state.me = event.user;
       state.partner = event.partner;
       state.messages = event.messages || [];

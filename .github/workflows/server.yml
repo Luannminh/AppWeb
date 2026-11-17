@@ -43,3 +43,6 @@ jobs:
 
       - name: REST + WebSocket smoke test
         run: npm run smoke
+
+      - name: Web client UI test (jsdom)
+        run: npm run test:web
