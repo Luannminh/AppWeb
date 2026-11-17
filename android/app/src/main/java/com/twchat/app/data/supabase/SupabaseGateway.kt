@@ -45,7 +45,7 @@ class SupabaseGateway(private val sessionStore: SessionStore) {
     }
 
     fun applyTokens(tokenSet: TokenSet?) {
-        api.setTokens(tokenSet)
+        api.updateTokens(tokenSet)
     }
 
     fun startRealtime(conversationId: String, myId: String, partnerId: String?) {
@@ -56,7 +56,7 @@ class SupabaseGateway(private val sessionStore: SessionStore) {
 
     fun stop() {
         realtime.stop()
-        api.setTokens(null)
+        api.updateTokens(null)
     }
 
     // ------------------------------------------------------------------ auth

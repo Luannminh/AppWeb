@@ -62,7 +62,7 @@ class SupabaseApi {
         anonKey = key.trim()
     }
 
-    fun setTokens(newTokens: TokenSet?) {
+    fun updateTokens(newTokens: TokenSet?) {
         tokens = newTokens
     }
 
