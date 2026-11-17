@@ -63,7 +63,12 @@ jobs:
               echo "### ❌ Android build failed"
               echo
               echo '```'
-              tail -c 12000 gradle.log
+              grep -E "^(e: |w: |> Task .*FAILED|FAILURE:)" gradle.log | head -80
+              grep -E "error:|tests? failed|Test .* FAILED" gradle.log | head -40
+              echo '```'
+              echo
+              echo '```'
+              grep -A8 "What went wrong" gradle.log | head -30
               echo '```'
             } > report.md
             gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" -F body=@report.md
