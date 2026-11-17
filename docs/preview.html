@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TwoChat — xem trước giao diện</title>
+<style>
+  :root {
+    --rose: #E0567B;
+    --rose-soft: #FFD9E1;
+    --teal: #2F7F86;
+    --bg: #FFF5F2;
+    --surface: #FFFBF8;
+    --ink: #201A1B;
+    --muted: #5D5354;
+    --faint: #8C8081;
+    --mate: #F4EAE8;
+    --outline: #E3D3D4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 40px 24px 64px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #3a2229 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 110%, #1d3034 0%, transparent 55%),
+      #14100f;
+    color: #f3e7e9;
+    min-height: 100vh;
+  }
+  header.page {
+    max-width: 1120px;
+    margin: 0 auto 34px;
+    text-align: center;
+  }
+  header.page h1 {
+    font-size: 26px;
+    margin: 0 0 8px;
+    letter-spacing: -0.2px;
+  }
+  header.page p {
+    margin: 0;
+    color: #cbbabb;
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+  header.page code {
+    background: rgba(255,255,255,.08);
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .stage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 56px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .frame-wrap .caption { font-size: 13px; color: #b9a7a9; letter-spacing: .2px; }
+  .phone {
+    width: 380px;
+    height: 802px;
+    background: #000;
+    border-radius: 44px;
+    padding: 11px;
+    box-shadow: 0 30px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08);
+    position: relative;
+  }
+  .screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 34px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 22px 4px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink);
+    opacity: .82;
+  }
+  .statusbar .dots { display: flex; gap: 4px; align-items: center; }
+  .statusbar .dots i {
+    display: block; width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+  }
+  .statusbar .batt {
+    width: 22px; height: 11px; border: 1.4px solid currentColor; border-radius: 3px; position: relative;
+  }
+  .statusbar .batt::after {
+    content: ""; position: absolute; inset: 1.6px; right: 6px; background: currentColor; border-radius: 1px;
+  }
+
+  /* ---------- chat screen ---------- */
+  .appbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 10px 10px 16px;
+    background: var(--surface);
+    box-shadow: 0 2px 10px rgba(60, 20, 30, .07);
+    z-index: 2;
+  }
+  .avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-weight: 600; font-size: 17px; color: #fff;
+    flex: none;
+  }
+  .avatar.teal { background: linear-gradient(135deg, var(--teal), #57b0b7); }
+  .avatar.rose { background: linear-gradient(135deg, var(--rose), #f0899e); }
+  .avatar.tiny { width: 18px; height: 18px; font-size: 9px; }
+  .who { flex: 1; min-width: 0; }
+  .who b { display: block; font-size: 16.5px; letter-spacing: -.1px; }
+  .who span { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .iconbtn {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--muted);
+  }
+  .iconbtn svg { width: 21px; height: 21px; }
+
+  .thread {
+    flex: 1;
+    overflow: hidden;
+    padding: 12px 14px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background:
+      radial-gradient(400px 220px at 90% 0%, rgba(224,86,123,.06), transparent 70%),
+      var(--bg);
+  }
+  .daychip { align-self: center; margin: 6px 0 4px; }
+  .daychip span {
+    background: rgba(255,255,255,.92);
+    border-radius: 12px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    box-shadow: 0 1px 3px rgba(50,20,30,.08);
+  }
+  .row { display: flex; flex-direction: column; max-width: 78%; }
+  .row.mate { align-self: flex-start; }
+  .row.me { align-self: flex-end; align-items: flex-end; }
+  .bubble {
+    padding: 10px 14px;
+    border-radius: 20px;
+    font-size: 15.5px;
+    line-height: 1.35;
+    box-shadow: 0 1px 2px rgba(50, 20, 30, .05);
+  }
+  .row.mate .bubble {
+    background: var(--mate);
+    color: #453b3c;
+    border-bottom-left-radius: 6px;
+  }
+  .row.me .bubble {
+    background: var(--rose);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+  }
+  .meta {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--faint);
+    padding: 3px 6px 0;
+  }
+  .reaction {
+    background: #fff; border-radius: 10px;
+    padding: 1px 5px; font-size: 11px;
+    box-shadow: 0 1px 3px rgba(50,20,30,.12);
+  }
+
+  .composer {
+    background: var(--surface);
+    box-shadow: 0 -6px 20px rgba(60, 20, 30, .08);
+    padding: 6px 12px 16px;
+  }
+  .sendas {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; color: var(--rose);
+  }
+  .sendas svg { width: 14px; height: 14px; }
+  .composer-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 4px; }
+  .field {
+    flex: 1;
+    border: 1.5px solid var(--outline);
+    border-radius: 24px;
+    padding: 13px 16px;
+    font-size: 15px;
+    color: var(--faint);
+    background: transparent;
+  }
+  .send {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--rose);
+    display: grid; place-items: center;
+    box-shadow: 0 6px 16px rgba(224, 86, 123, .38);
+    flex: none;
+  }
+  .send svg { width: 22px; height: 22px; }
+
+  /* ---------- onboarding ---------- */
+  .onboard {
+    flex: 1;
+    background: linear-gradient(180deg, #FFDCE4 0%, #FFF5F2 42%, #FFF5F2 100%);
+    padding: 18px 24px 26px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+  }
+  .heartbadge {
+    width: 92px; height: 92px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--rose), #f18ba1);
+    display: grid; place-items: center;
+    box-shadow: 0 14px 30px rgba(224, 86, 123, .35);
+    margin-top: 26px;
+  }
+  .heartbadge svg { width: 44px; height: 44px; }
+  .title-app { font-size: 27px; font-weight: 700; letter-spacing: -.5px; margin-top: 18px; }
+  .subtitle {
+    font-size: 14px; color: rgba(32,26,27,.72); text-align: center;
+    line-height: 1.5; margin-top: 6px;
+  }
+  .form { width: 100%; margin-top: 26px; display: flex; flex-direction: column; gap: 10px; }
+  .inputbox {
+    border: 1.5px solid var(--outline);
+    border-radius: 16px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,.55);
+  }
+  .inputbox .lbl { font-size: 10.5px; color: var(--faint); letter-spacing: .2px; }
+  .inputbox .val { font-size: 15px; margin-top: 2px; color: var(--ink); }
+  .inputbox .val.blank { color: #b3a6a7; }
+  .swatches { display: flex; gap: 10px; padding: 2px 0 4px; }
+  .sw {
+    width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+    color: #fff; font-size: 15px;
+  }
+  .sw.sel { box-shadow: 0 0 0 3px rgba(32,26,27,.85); }
+  .lockline { display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(32,26,27,.55); margin-top: 20px; }
+  .lockline svg { width: 13px; height: 13px; }
+  .cta {
+    width: 100%; height: 54px; margin-top: 18px;
+    border-radius: 18px;
+    background: var(--rose);
+    color: #fff; font-size: 15px; font-weight: 600;
+    display: grid; place-items: center;
+    box-shadow: 0 10px 24px rgba(224, 86, 123, .32);
+  }
+  .note {
+    max-width: 1120px; margin: 44px auto 0;
+    color: #a89698; font-size: 12.5px; text-align: center; line-height: 1.7;
+  }
+  @media (max-width: 460px) {
+    body { padding: 22px 10px 40px; }
+    .phone { width: 100%; height: 700px; border-radius: 34px; padding: 8px; }
+    .screen { border-radius: 28px; }
+    .stage { gap: 34px; }
+  }
+</style>
+</head>
+<body>
+  <header class="page">
+    <h1>TwoChat — xem trước giao diện</h1>
+    <p>
+      Bản mô phỏng HTML của giao diện Compose trong <code>android/</code>.
+      App thật là Kotlin + Jetpack Compose, dữ liệu lưu bằng Room trên máy.
+    </p>
+  </header>
+
+  <div class="stage">
+    <!-- ============ chat screen ============ -->
+    <div class="frame-wrap">
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar">
+            <span>9:41</span>
+            <span class="dots"><i></i><i></i><i></i><span class="batt"></span></span>
+          </div>
+
+          <div class="appbar">
+            <div class="avatar teal">A</div>
+            <div class="who">
+              <b>An</b>
+              <span>Chỉ lưu trên máy này</span>
+            </div>
+            <div class="iconbtn" aria-label="Tìm tin nhắn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.6-3.6"></path>
+              </svg>
+            </div>
+            <div class="iconbtn" aria-label="Cài đặt">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+                <circle cx="12" cy="12" r="3.2"></circle>
+                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.36 9c.26.6.85 1 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"></path>
+              </svg>
+            </div>
+          </div>
+
+          <div class="thread">
+            <div class="daychip"><span>Hôm qua</span></div>
+
+            <div class="row me">
+              <div class="bubble">Mai anh qua đón em lúc 7 giờ nhé</div>
+              <div class="meta"><span>22:48</span></div>
+            </div>
+            <div class="row mate">
+              <div class="bubble">Ok anh, em chuẩn bị sẵn 😄</div>
+              <div class="meta"><span>22:49</span><span class="reaction">❤️</span></div>
+            </div>
+
+            <div class="daychip"><span>Hôm nay</span></div>
+
+            <div class="row mate">
+              <div class="bubble">Hôm nay anh có về sớm không?</div>
+              <div class="meta"><span>09:12</span></div>
+            </div>
+            <div class="row me">
+              <div class="bubble">Có, khoảng 6 giờ. Em muốn ăn gì?</div>
+              <div class="meta"><span>09:13</span></div>
+            </div>
+            <div class="row mate">
+              <div class="bubble">Phở nhé 🍜</div>
+              <div class="meta"><span>09:14</span><span class="reaction">😍</span></div>
+            </div>
+            <div class="row me">
+              <div class="bubble">Chốt luôn, anh mua về ❤️</div>
+              <div class="meta"><span>09:15</span></div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <div class="sendas">
+              <div class="avatar rose tiny">M</div>
+              <span>Gửi với tên Minh</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 7h10l-3-3"></path><path d="M17 17H7l3 3"></path>
+              </svg>
+            </div>
+            <div class="composer-row">
+              <div class="field">Nhắn gì đó…</div>
+              <div class="send" aria-label="Gửi">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4.5 12L20 4.5 15.5 20l-3.7-5.6L4.5 12z"></path>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">Màn hình trò chuyện</div>
+    </div>
+
+    <!-- ============ onboarding screen ============ -->
+    <div class="frame-wrap">
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar">
+            <span>9:41</span>
+            <span class="dots"><i></i><i></i><i></i><span class="batt"></span></span>
+          </div>
+
+          <div class="onboard">
+            <div class="heartbadge">
+              <svg viewBox="0 0 24 24" fill="#fff">
+                <path d="M12 21s-7.5-4.7-9.3-9.1C1.4 8.2 3.4 4.8 6.9 4.2c2.1-.4 4 .6 5.1 2.2 1.1-1.6 3-2.6 5.1-2.2 3.5.6 5.5 4 4.2 7.7C19.5 16.3 12 21 12 21z"></path>
+              </svg>
+            </div>
+            <div class="title-app">TwoChat</div>
+            <div class="subtitle">Cuộc trò chuyện riêng của hai người,<br />chỉ nằm trên chiếc máy này.</div>
+
+            <div class="form">
+              <div class="inputbox">
+                <div class="lbl">Bạn tên là gì?</div>
+                <div class="val">Minh</div>
+              </div>
+              <div class="swatches">
+                <div class="sw sel" style="background:#E0567B">✓</div>
+                <div class="sw" style="background:#E4794F"></div>
+                <div class="sw" style="background:#8A6BD8"></div>
+                <div class="sw" style="background:#3A82C4"></div>
+                <div class="sw" style="background:#2F9E86"></div>
+                <div class="sw" style="background:#D99A1F"></div>
+              </div>
+
+              <div class="inputbox" style="margin-top:8px">
+                <div class="lbl">Người ấy tên gì?</div>
+                <div class="val">An</div>
+              </div>
+              <div class="swatches">
+                <div class="sw" style="background:#E0567B"></div>
+                <div class="sw" style="background:#E4794F"></div>
+                <div class="sw" style="background:#8A6BD8"></div>
+                <div class="sw sel" style="background:#3A82C4">✓</div>
+                <div class="sw" style="background:#2F9E86"></div>
+                <div class="sw" style="background:#D99A1F"></div>
+              </div>
+            </div>
+
+            <div class="lockline">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="4" y="10.5" width="16" height="10" rx="2.5"></rect>
+                <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"></path>
+              </svg>
+              <span>Không tài khoản, không máy chủ, không quảng cáo.</span>
+            </div>
+
+            <div class="cta">Bắt đầu trò chuyện</div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">Màn hình chào lần đầu</div>
+    </div>
+  </div>
+
+  <div class="note">
+    Xem trước tĩnh để hình dung bố cục và bảng màu. App thật có thêm: thả cảm xúc khi
+    nhấn giữ, tìm kiếm, xuất hội thoại, chế độ tối theo hệ thống.
+  </div>
+</body>
+</html>

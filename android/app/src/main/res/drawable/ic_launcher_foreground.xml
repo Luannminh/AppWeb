@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon foreground: a chat bubble with a heart, inside the 72dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- speech bubble -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M40,32h28a14,14 0 0 1 14,14v14a14,14 0 0 1 -14,14h-16l-11,9v-9h-1a14,14 0 0 1 -14,-14v-14a14,14 0 0 1 14,-14z" />
+
+    <!-- heart -->
+    <path
+        android:fillColor="#FFE0567B"
+        android:pathData="M54,66.5c-0.6,0 -1.2,-0.2 -1.7,-0.6c-5.9,-4.3 -10.3,-8.4 -10.3,-13c0,-3.6 2.8,-6.4 6.3,-6.4c2.2,0 4.3,1.1 5.7,2.9c1.4,-1.8 3.5,-2.9 5.7,-2.9c3.5,0 6.3,2.8 6.3,6.4c0,4.6 -4.4,8.7 -10.3,13C55.2,66.3 54.6,66.5 54,66.5z" />
+</vector>
