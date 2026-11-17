@@ -90,12 +90,13 @@ fun ChatScreen(state: AppUiState, vm: AppViewModel) {
         }
     }
 
-    val typing = state.live.typingUntil > now
-    val online = state.live.partnerOnline
+    val typing = state.live.isTyping(now)
+    val online = state.live.partnerOnline(now)
+    val lastSeen = maxOf(state.live.partnerLastSeen, partner.lastSeen)
     val statusText = when {
         typing -> "Đang nhập…"
         online -> "Đang hoạt động"
-        else -> RelativeTime.lastSeen(state.live.partnerLastSeen)
+        else -> RelativeTime.lastSeen(lastSeen)
     }
 
     Box(

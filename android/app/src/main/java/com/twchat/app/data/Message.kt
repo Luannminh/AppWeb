@@ -4,20 +4,21 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * A message in the local cache. The server is the source of truth; this table
- * exists so the conversation renders instantly, works offline and survives a
- * restart. [clientId] is the stable identity of a message (generated on the
- * sending device), which is also what makes retries idempotent.
+ * A message in the local cache. Postgres is the source of truth; this table
+ * keeps the conversation instant to open, readable offline and lets a pending
+ * message survive a restart. [clientId] is the stable identity of a message and
+ * matches the `client_id` column, which makes retries idempotent.
  */
 @Entity(tableName = "messages")
 data class Message(
     @PrimaryKey
     val clientId: String,
-    /** Server id, null while the message is still pending. */
+    /** Postgres `id`, null while the message is still pending. */
     val serverId: Long? = null,
-    val senderId: Long,
+    /** `auth.users.id` of the sender (uuid). */
+    val senderId: String,
     val body: String,
-    /** Epoch millis, taken from the server once acknowledged. */
+    /** Epoch millis. */
     val sentAt: Long,
     val readAt: Long? = null,
     val status: String = MessageStatus.SENT,

@@ -15,10 +15,6 @@ app/build/
 !debug.keystore
 output.json
 
-# Node
-node_modules/
-server/data/
-
 # OS / editor noise
 .DS_Store
 Thumbs.db

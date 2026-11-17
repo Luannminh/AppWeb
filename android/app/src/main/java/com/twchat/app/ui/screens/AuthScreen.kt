@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -48,16 +49,30 @@ import com.twchat.app.ui.AppUiState
 import com.twchat.app.ui.AppViewModel
 import com.twchat.app.ui.theme.readableOn
 
+private const val MODE_LOGIN = "login"
+private const val MODE_REGISTER = "register"
+private const val MODE_ANONYMOUS = "anonymous"
+
 @Composable
 fun AuthScreen(state: AppUiState, vm: AppViewModel) {
-    var serverUrl by rememberSaveable(state.session.serverUrl) { mutableStateOf(state.session.serverUrl) }
-    var isRegister by rememberSaveable { mutableStateOf(false) }
-    var username by rememberSaveable { mutableStateOf("") }
+    var mode by rememberSaveable { mutableStateOf(MODE_LOGIN) }
+    var serverUrl by rememberSaveable(state.session.serverUrl) {
+        mutableStateOf(state.session.serverUrl)
+    }
+    var anonKey by rememberSaveable(state.session.anonKey) { mutableStateOf(state.session.anonKey) }
+    var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var displayName by rememberSaveable { mutableStateOf("") }
-    var showServerField by rememberSaveable { mutableStateOf(false) }
+    var showConfig by rememberSaveable(state.isConfigured) { mutableStateOf(!state.isConfigured) }
 
     val loading = state.extras.loading
+    val needsEmail = mode != MODE_ANONYMOUS
+    val needsDisplayName = mode != MODE_LOGIN
+    val canSubmit = !loading &&
+        serverUrl.isNotBlank() &&
+        anonKey.isNotBlank() &&
+        (!needsEmail || (email.contains("@") && password.isNotEmpty())) &&
+        (!needsDisplayName || displayName.isNotBlank())
 
     Column(
         modifier = Modifier
@@ -78,11 +93,11 @@ fun AuthScreen(state: AppUiState, vm: AppViewModel) {
             .padding(horizontal = 24.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(14.dp))
 
         Box(
             modifier = Modifier
-                .size(84.dp)
+                .size(80.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.linearGradient(
@@ -98,21 +113,21 @@ fun AuthScreen(state: AppUiState, vm: AppViewModel) {
                 imageVector = Icons.Rounded.Favorite,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary.readableOn(),
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(38.dp),
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         Text("TwoChat", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "Nhắn tin thời gian thực cho hai người.\nTự host, không quảng cáo, không theo dõi.",
+            text = "Chat thời gian thực cho hai người.\nDữ liệu trên Supabase của bạn.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
             textAlign = TextAlign.Center,
         )
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(20.dp))
 
         Row(
             modifier = Modifier
@@ -122,32 +137,14 @@ fun AuthScreen(state: AppUiState, vm: AppViewModel) {
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            AuthTab("Đăng nhập", selected = !isRegister, modifier = Modifier.weight(1f)) {
-                isRegister = false
-            }
-            AuthTab("Tạo tài khoản", selected = isRegister, modifier = Modifier.weight(1f)) {
-                isRegister = true
-            }
+            AuthTab("Đăng nhập", mode == MODE_LOGIN, Modifier.weight(1f)) { mode = MODE_LOGIN }
+            AuthTab("Đăng ký", mode == MODE_REGISTER, Modifier.weight(1f)) { mode = MODE_REGISTER }
+            AuthTab("Ẩn danh", mode == MODE_ANONYMOUS, Modifier.weight(1f)) { mode = MODE_ANONYMOUS }
         }
 
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Tên đăng nhập") },
-            placeholder = { Text("vd: minh") },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Ascii,
-                imeAction = ImeAction.Next,
-            ),
-        )
-
-        if (isRegister) {
-            Spacer(Modifier.height(10.dp))
+        if (needsDisplayName) {
             OutlinedTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
@@ -158,63 +155,97 @@ fun AuthScreen(state: AppUiState, vm: AppViewModel) {
                 shape = RoundedCornerShape(16.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
             )
+            Spacer(Modifier.height(10.dp))
         }
 
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Mật khẩu") },
-            placeholder = { Text("Ít nhất 6 ký tự") },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done,
-            ),
-        )
+        if (needsEmail) {
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Email") },
+                placeholder = { Text("ban@email.com") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next,
+                ),
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Mật khẩu") },
+                placeholder = { Text("Ít nhất 6 ký tự") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                ),
+            )
+            Spacer(Modifier.height(10.dp))
+        }
 
-        Spacer(Modifier.height(10.dp))
+        // ------------------------------------------------- Supabase connection
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .clickable { showServerField = !showServerField }
+                .clickable { showConfig = !showConfig }
                 .padding(vertical = 6.dp, horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = if (showServerField) "▾" else "▸",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Icon(
+                imageVector = Icons.Rounded.ExpandLess,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
             )
             Spacer(Modifier.size(6.dp))
             Text(
-                text = "Máy chủ: $serverUrl",
+                text = if (state.isConfigured) {
+                    "Supabase: ${state.session.serverUrl.removePrefix("https://")}"
+                } else {
+                    "Cấu hình Supabase (bắt buộc)"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        if (showServerField) {
+        if (showConfig || !state.isConfigured) {
             OutlinedTextField(
                 value = serverUrl,
                 onValueChange = { serverUrl = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Địa chỉ máy chủ") },
-                placeholder = { Text("http://192.168.1.10:3000") },
+                label = { Text("Project URL") },
+                placeholder = { Text("https://abcdxyz.supabase.co") },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Uri,
-                    imeAction = ImeAction.Done,
+                    imeAction = ImeAction.Next,
                 ),
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = anonKey,
+                onValueChange = { anonKey = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("anon public key") },
+                placeholder = { Text("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "Emulator: http://10.0.2.2:3000 · Máy thật: IP LAN của máy tính chạy server",
+                text = "Lấy ở Supabase → Project Settings → API. App chỉ nói chuyện trực tiếp với " +
+                    "Supabase của bạn.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             )
@@ -224,10 +255,13 @@ fun AuthScreen(state: AppUiState, vm: AppViewModel) {
 
         Button(
             onClick = {
-                if (isRegister) vm.register(serverUrl, username, password, displayName)
-                else vm.login(serverUrl, username, password)
+                when (mode) {
+                    MODE_LOGIN -> vm.signIn(serverUrl, anonKey, email, password)
+                    MODE_REGISTER -> vm.signUp(serverUrl, anonKey, email, password, displayName)
+                    else -> vm.signInAnonymously(serverUrl, anonKey, displayName)
+                }
             },
-            enabled = !loading && username.isNotBlank() && password.isNotEmpty(),
+            enabled = canSubmit,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp),
@@ -241,7 +275,11 @@ fun AuthScreen(state: AppUiState, vm: AppViewModel) {
                 )
             } else {
                 Text(
-                    text = if (isRegister) "Tạo tài khoản" else "Đăng nhập",
+                    text = when (mode) {
+                        MODE_LOGIN -> "Đăng nhập"
+                        MODE_REGISTER -> "Tạo tài khoản"
+                        else -> "Vào ngay (ẩn danh)"
+                    },
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
@@ -257,13 +295,25 @@ fun AuthScreen(state: AppUiState, vm: AppViewModel) {
             )
         }
 
-        Spacer(Modifier.height(18.dp))
+        state.extras.notice?.let { message ->
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
         Text(
-            text = "Mỗi người đăng nhập trên máy của mình, sau đó ghép đôi bằng mã mời.",
+            text = "Mỗi người đăng nhập trên máy của mình rồi ghép đôi bằng mã 6 ký tự. " +
+                "Ẩn danh: có tài khoản ngay, không cần email.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
             textAlign = TextAlign.Center,
         )
+        Spacer(Modifier.height(12.dp))
     }
 }
 

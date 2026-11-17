@@ -18,7 +18,7 @@ class ChatItemsTest {
     private fun millis(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
         LocalDateTime.of(year, month, day, hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private fun message(index: Int, senderId: Long, body: String, sentAt: Long) = Message(
+    private fun message(index: Int, senderId: String, body: String, sentAt: Long) = Message(
         clientId = "c$index",
         serverId = index.toLong(),
         senderId = senderId,
@@ -35,9 +35,9 @@ class ChatItemsTest {
     @Test
     fun `one header per day, oldest first`() {
         val messages = listOf(
-            message(1, senderId = 10, body = "chào", sentAt = millis(2024, 6, 1, 9, 0)),
-            message(2, senderId = 20, body = "hi", sentAt = millis(2024, 6, 1, 10, 30)),
-            message(3, senderId = 10, body = "ngủ ngon", sentAt = millis(2024, 6, 2, 23, 0)),
+            message(1, senderId = "user-a", body = "chào", sentAt = millis(2024, 6, 1, 9, 0)),
+            message(2, senderId = "user-b", body = "hi", sentAt = millis(2024, 6, 1, 10, 30)),
+            message(3, senderId = "user-a", body = "ngủ ngon", sentAt = millis(2024, 6, 2, 23, 0)),
         )
 
         val items = ChatItems.build(messages, zone, today = LocalDate.of(2024, 6, 2))
@@ -53,8 +53,8 @@ class ChatItemsTest {
     @Test
     fun `out of order input is sorted before grouping`() {
         val messages = listOf(
-            message(2, senderId = 20, body = "sau", sentAt = millis(2024, 6, 1, 12, 0)),
-            message(1, senderId = 10, body = "trước", sentAt = millis(2024, 6, 1, 8, 0)),
+            message(2, senderId = "user-b", body = "sau", sentAt = millis(2024, 6, 1, 12, 0)),
+            message(1, senderId = "user-a", body = "trước", sentAt = millis(2024, 6, 1, 8, 0)),
         )
 
         val items = ChatItems.build(messages, zone, today = LocalDate.of(2024, 6, 1))
@@ -70,7 +70,7 @@ class ChatItemsTest {
         val pending = Message(
             clientId = "tmp-1",
             serverId = null,
-            senderId = 10,
+            senderId = "user-a",
             body = "đang gửi",
             sentAt = millis(2024, 6, 1, 9, 0),
             status = MessageStatus.PENDING,

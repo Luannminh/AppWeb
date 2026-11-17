@@ -2,35 +2,32 @@ package com.twchat.app.data
 
 import org.json.JSONObject
 
-/** JSON <-> [Person] helpers shared by the API client and the session store. */
+/** Serialises [Person] for the local cache (DataStore). */
 object PersonJson {
-
-    fun parse(json: JSONObject?): Person? {
-        if (json == null || json.isNull("id")) return null
-        val username = json.optString("username")
-        return Person(
-            id = json.optLong("id"),
-            username = username,
-            displayName = json.optString("displayName").ifBlank { username },
-            color = json.optLong("color"),
-            inviteCode = json.optString("inviteCode").ifBlank { null },
-            online = json.optBoolean("online"),
-            lastSeen = json.optLong("lastSeen"),
-        )
-    }
-
-    fun parse(raw: String?): Person? {
-        if (raw.isNullOrBlank()) return null
-        return runCatching { parse(JSONObject(raw)) }.getOrNull()
-    }
 
     fun toJson(person: Person): String = JSONObject()
         .put("id", person.id)
-        .put("username", person.username)
-        .put("displayName", person.displayName)
+        .put("display_name", person.displayName)
         .put("color", person.color)
-        .put("inviteCode", person.inviteCode)
+        .put("invite_code", person.inviteCode)
+        .put("conversation_id", person.conversationId)
+        .put("last_seen", person.lastSeen)
         .put("online", person.online)
-        .put("lastSeen", person.lastSeen)
         .toString()
+
+    fun parse(raw: String?): Person? {
+        if (raw.isNullOrBlank()) return null
+        val json = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        val id = json.optString("id")
+        if (id.isBlank()) return null
+        return Person(
+            id = id,
+            displayName = json.optString("display_name").ifBlank { "Người dùng" },
+            color = json.optLong("color", 0xFFE0567B),
+            inviteCode = json.optString("invite_code").ifBlank { null },
+            conversationId = json.optString("conversation_id").ifBlank { null },
+            lastSeen = json.optLong("last_seen"),
+            online = json.optBoolean("online"),
+        )
+    }
 }

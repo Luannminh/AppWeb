@@ -107,7 +107,7 @@ fun SettingsScreen(state: AppUiState, vm: AppViewModel) {
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "@${me.username}",
+                            text = state.session.email ?: "Tài khoản ẩn danh",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -144,7 +144,11 @@ fun SettingsScreen(state: AppUiState, vm: AppViewModel) {
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                text = if (state.live.partnerOnline) "Đang hoạt động" else "Ngoại tuyến",
+                                text = if (state.live.partnerOnline(System.currentTimeMillis())) {
+                                    "Đang hoạt động"
+                                } else {
+                                    "Ngoại tuyến"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -168,12 +172,21 @@ fun SettingsScreen(state: AppUiState, vm: AppViewModel) {
             }
 
             SectionCard(title = "Kết nối") {
-                InfoRow(label = "Máy chủ", value = state.session.serverUrl)
                 InfoRow(
-                    label = "Trạng thái",
+                    label = "Supabase",
+                    value = state.session.serverUrl.removePrefix("https://"),
+                )
+                InfoRow(
+                    label = "Đăng nhập",
+                    value = if (state.session.isAnonymous) "Ẩn danh" else "Email + mật khẩu",
+                )
+                InfoRow(
+                    label = "Realtime",
                     value = when {
-                        !state.live.connected -> "Mất kết nối — đang thử lại…"
-                        state.live.partnerOnline -> "Đã kết nối · người ấy đang online"
+                        !state.live.connected -> "Đang kết nối lại… (vẫn đồng bộ 5 giây/lần)"
+                        state.live.partnerOnline(System.currentTimeMillis()) ->
+                            "Đã kết nối · người ấy đang online"
+
                         else -> "Đã kết nối"
                     },
                 )
@@ -212,8 +225,9 @@ fun SettingsScreen(state: AppUiState, vm: AppViewModel) {
                     Text("Xuất / chia sẻ cuộc trò chuyện")
                 }
                 Text(
-                    text = "Tin nhắn được lưu trên máy chủ của bạn và giữ một bản đệm trên máy để mở " +
-                        "nhanh, xem được cả khi mất mạng.",
+                    text = "Tin nhắn được lưu trong Postgres trên Supabase của bạn (chỉ hai người " +
+                        "trong cuộc trò chuyện đọc được nhờ Row Level Security) và giữ một bản đệm " +
+                        "trên máy để mở nhanh, xem được cả khi mất mạng.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 )
@@ -221,9 +235,9 @@ fun SettingsScreen(state: AppUiState, vm: AppViewModel) {
 
             SectionCard(title = "Về TwoChat") {
                 Text(
-                    text = "Phiên bản 1.1 · Kotlin + Jetpack Compose\n" +
-                        "Nhắn tin thời gian thực qua WebSocket, dữ liệu nằm trên máy chủ bạn tự host. " +
-                        "Không quảng cáo, không theo dõi.",
+                    text = "Phiên bản 2.0 · Kotlin + Jetpack Compose\n" +
+                        "Backend: Supabase (Postgres + Realtime + Auth). Dữ liệu nằm trong project " +
+                        "Supabase của bạn. Không quảng cáo, không theo dõi.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

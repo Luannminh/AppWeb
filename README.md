@@ -1,117 +1,152 @@
-# TwoChat — nhắn tin thời gian thực cho hai người
+# TwoChat 💬
 
-Messenger thu nhỏ, tự host: một **app Android native** (Kotlin + Jetpack Compose) và một
-**server Node.js** (REST + WebSocket) chạy trên máy của bạn. Hai người đăng ký tài khoản,
-ghép đôi bằng mã mời, rồi nhắn tin realtime: tin đến ngay, có “Đã xem”, “Đang nhập…”,
-trạng thái online, gửi lỗi thì bấm gửi lại.
+Ứng dụng chat **realtime cho đúng hai người**, viết bằng **Kotlin + Jetpack Compose**
+(Android native), backend là **Supabase** (Postgres + Auth + Realtime).
+
+Không có server Node, không có VPS, không có Firebase: app nói chuyện trực tiếp với
+project Supabase của **bạn**, dữ liệu nằm trong database của bạn.
 
 ```
-android/   app Android (Kotlin, Compose, Room cache, OkHttp + WebSocket)
-server/    Node.js: REST API + WebSocket + web client chạy luôn trên server
+┌───────────────┐          HTTPS (REST)          ┌──────────────────────────┐
+│  Android app  │ ─────────────────────────────▶ │ Supabase                 │
+│  Kotlin       │   /auth/v1  ·  /rest/v1        │  · GoTrue   (đăng nhập)  │
+│  Compose      │                                │  · PostgREST (dữ liệu)   │
+│  Room cache   │ ◀───────────────────────────── │  · Realtime (WebSocket)  │
+└───────────────┘        WSS realtime           │  · Postgres + RLS        │
+                                                └──────────────────────────┘
 ```
 
 ## Tính năng
 
 | | |
 |---|---|
-| ⚡ **Realtime** | Tin nhắn đi qua WebSocket, hiện ngay ở máy kia (< 1 giây), có tự kết nối lại |
-| ✓✓ **Đã xem** | Server ghi nhận người nhận đã đọc tới tin nào, hiện “Đã xem” dưới tin của bạn |
-| ✍️ **Đang nhập…** | Báo cho người kia biết bạn đang gõ, tự tắt sau ~3 giây |
-| 🟢 **Online / last seen** | Chấm xanh trong header, “Hoạt động 5 phút trước” khi offline |
-| 📨 **Gửi tin cậy** | Tin hiện ngay (Đang gửi…), `clientId` chống trùng khi retry, lỗi mạng thì “Gửi lại” |
-| 💾 **Cache offline** | Room giữ hội thoại trên máy: mở app là thấy lịch sử, mất mạng vẫn đọc được |
-| 🔗 **Ghép đôi bằng mã** | Mỗi tài khoản có mã 6 ký tự, nhập mã của người kia là xong |
-| 👤 **Hồ sơ** | Tên hiển thị + màu riêng, đổi được trong Cài đặt |
-| 🌙 **Sáng / tối** | Theo cài đặt hệ thống |
-| 🧾 **Xuất hội thoại** | Kết xuất văn bản và chia sẻ qua app khác |
-| 🌐 **Web client** | Server tự phục vụ một bản web (cùng API) để chat thử trên trình duyệt |
+| Nhắn tin tức thời | tin mới hiện ngay bên kia trong ~100 ms (Realtime `postgres_changes`) |
+| Đã xem | dấu ✓✓ khi người kia đã đọc tin |
+| Đang nhập… | hiện chấm "Đang nhập…" (Realtime Broadcast) |
+| Online / ngoại tuyến | "Đang hoạt động" + "hoạt động 5 phút trước" (`last_seen`) |
+| Lịch sử | lưu trên Postgres, mở app là thấy ngay (kèm cache Room để xem offline) |
+| Gửi không mất tin | tin đang chờ / gửi lỗi / bấm để gửi lại, chống trùng bằng `client_id` |
+| Đăng nhập | **email + mật khẩu** hoặc **ẩn danh** (một chạm, không cần email) |
+| Ghép đôi | nhập mã 6 ký tự của người kia; mỗi cuộc trò chuyện đúng 2 người |
+| Giao diện | tiếng Việt, sáng/tối, vuốt để cuộn, bong bóng chat, avatar màu |
 
-Chưa có (cố ý, để giữ code gọn): gửi ảnh/file, thông báo đẩy khi app bị tắt (cần FCM),
-gọi thoại, nhóm nhiều người.
+## 1. Chuẩn bị Supabase (5 phút)
 
-## Chạy server
+1. Tạo project tại [supabase.com](https://supabase.com) (gói Free là đủ).
+2. **SQL Editor → New query**: dán toàn bộ [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
+   Script tạo bảng, RLS, RPC ghép đôi, trigger tạo hồ sơ và bật realtime; chạy lại nhiều lần cũng không sao.
+3. **Authentication → Sign In / Providers → Allow anonymous sign-ins** → bật (nếu muốn dùng chế độ ẩn danh).
+   Nếu tắt, chế độ ẩn danh sẽ báo lỗi `422 Signup requires a valid password`.
+4. **Authentication → Sign In / Providers → Email**: nếu muốn đăng ký là dùng được ngay thì tắt
+   *Confirm email*. Nếu để bật, người dùng phải mở mail xác nhận trước khi đăng nhập.
+5. **Project Settings → API**: copy **Project URL** và **anon public key** — sẽ nhập vào app.
 
-```bash
-cd server
-npm install
-npm start          # http://0.0.0.0:3000  (web client ở "/")
-npm run smoke      # test đầu-cuối: đăng ký, ghép đôi, tin nhắn, đã xem, typing, presence
-```
+`anon key` là khoá công khai, được thiết kế để nằm trong app. Quyền đọc/ghi do **Row Level
+Security** quyết định: mỗi người chỉ đọc được hồ sơ của mình và của người đã ghép đôi, chỉ đọc
+được tin nhắn trong cuộc trò chuyện của mình.
 
-Biến môi trường: `PORT` (mặc định 3000), `HOST`, `DATA_FILE` (mặc định `server/data/twochat.json`).
+## 2. Build APK
 
-Docker:
-
-```bash
-cd server
-docker build -t twochat-server .
-docker run -p 3000:3000 -v twochat-data:/data twochat-server
-```
-
-- Mã nguồn: `server/src/index.js` (routes + WebSocket), `store.js` (lưu JSON), `auth.js` (scrypt + token).
-- Dữ liệu là một file JSON, ghi sau mỗi thay đổi (debounce) — đủ cho 2 người, dễ backup.
-- Web client: `server/public/` (HTML/CSS/JS thuần, không build step).
-
-## Chạy app Android
+Cách nhanh nhất — mở thư mục `android/` bằng Android Studio (JDK 17), chờ Gradle sync rồi
+**Run ▶**. Hoặc bằng dòng lệnh:
 
 ```bash
-# Android Studio (Ladybug+, JDK 17): File → Open… → chọn thư mục android/ → Run 'app'
-cd android && ./gradlew assembleDebug    # APK: app/build/outputs/apk/debug/
-./gradlew test                            # unit test: gom nhóm theo ngày, định dạng giờ…
+cd android
+./gradlew assembleDebug        # APK: app/build/outputs/apk/debug/app-debug.apk
+./gradlew test                 # unit test
+./gradlew assembleRelease      # APK release (chưa ký, cần keystore riêng)
 ```
 
-**Địa chỉ máy chủ** nhập ngay trên màn hình đăng nhập (mục “Máy chủ”):
+GitHub Actions (`.github/workflows/android.yml`) tự build + chạy test mỗi lần push vào `android/**`
+và upload `twchat-debug-apk`.
 
-| Thiết bị | Địa chỉ |
+Yêu cầu: JDK 17, Android SDK 34, minSdk 26 (Android 8.0+).
+
+## 3. Dùng app
+
+1. Mở app → nhập **Project URL** + **anon key** (chỉ lần đầu, được lưu lại).
+2. Chọn **Đăng nhập**, **Đăng ký** hoặc **Ẩn danh** (ẩn danh chỉ cần tên hiển thị).
+3. Màn hình ghép đôi hiện **mã 6 ký tự** của bạn → gửi cho người kia.
+   Một trong hai người nhập mã của người còn lại → hai máy vào thẳng cuộc trò chuyện.
+4. Hai người nhắn tin, thấy "Đang nhập…", "Đã xem", trạng thái online.
+5. ⚙️ Cài đặt: đổi tên/màu, xem kết nối, huỷ ghép đôi (xoá luôn tin nhắn của cả hai), đăng xuất.
+
+Muốn chat với nhau trên cùng một máy để thử? Dùng hai emulator/profile, mỗi bên đăng nhập một
+tài khoản (một bên có thể là ẩn danh) rồi ghép mã.
+
+## 4. Kiến trúc
+
+```
+android/app/src/main/java/com/twchat/app/
+├── data/
+│   ├── supabase/
+│   │   ├── SupabaseApi.kt        # GoTrue (auth) + PostgREST (dữ liệu), tự refresh token
+│   │   ├── SupabaseRealtime.kt   # WebSocket Phoenix: postgres_changes + broadcast
+│   │   ├── SupabaseGateway.kt    # cổng duy nhất cho ViewModel
+│   │   ├── Models.kt             # TokenSet, RemoteMessage, SupabaseException
+│   │   └── SupabaseMapping.kt    # JSON ⇄ model, ISO-8601 ⇄ epoch millis
+│   ├── SessionStore.kt           # DataStore: URL, anon key, token, hồ sơ đã cache
+│   ├── Person.kt / AppSession.kt # trạng thái phiên (đã cấu hình / đã đăng nhập / đã ghép đôi)
+│   ├── Message.kt / MessageDao.kt / ChatDatabase.kt / ChatRepository.kt
+├── ui/
+│   ├── AppViewModel.kt           # điều phối: auth, realtime, gửi tin, ghép đôi
+│   ├── TwoChatApp.kt             # điều hướng giữa các màn hình
+│   ├── screens/                  # Auth, Pair, Chat, Settings
+│   └── components/               # bong bóng chat, composer, header, avatar…
+└── util/                         # định dạng thời gian, transcript để copy
+```
+
+**Không dùng SDK Supabase** — chỉ OkHttp + `org.json`, nhờ vậy APK nhẹ và mọi lời gọi đều đọc
+được trong `SupabaseApi.kt`.
+
+### Đồng bộ như thế nào
+
+- Gửi tin: ghi vào Room ở trạng thái `pending` → `POST /rest/v1/messages` (upsert theo
+  `conversation_id + sender_id + client_id`) → đổi sang `sent`. Lỗi mạng → `failed`, bấm để gửi lại
+  với đúng `client_id` nên không bao giờ bị nhân đôi.
+- Nhận tin: Realtime `postgres_changes` (INSERT/UPDATE) trên `messages` đã lọc theo
+  `conversation_id`; payload được map sang Room, UI tự cập nhật.
+- "Đã xem": người nhận `PATCH /rest/v1/messages?read_at=is.null&sender_id=neq.<mình>` → UPDATE
+  chảy về máy người gửi qua realtime.
+- "Đang nhập…" và presence: Broadcast trên cùng channel (`realtime:chat:<conversation_id>`),
+  heartbeat 15 giây/lần, không ghi vào database.
+- Dự phòng: nếu WebSocket không kết nối được (mạng chặn, RLS lỗi), app tự hỏi lại tin nhắn mỗi
+  5 giây và tự kết nối lại với backoff — chat vẫn chạy, chỉ chậm hơn.
+
+## 5. Dữ liệu
+
+```
+profiles(id → auth.users, display_name, color, invite_code unique 6 ký tự,
+         conversation_id, last_seen)
+conversations(id, member_a < member_b, unique(member_a, member_b))
+messages(id identity, conversation_id, sender_id, client_id uuid, body ≤ 4000,
+         created_at, read_at, unique(conversation_id, sender_id, client_id))
+```
+
+RPC (chạy với quyền definer, tự kiểm tra `auth.uid()`):
+
+- `pair_with_code(code text)` — tìm người có mã, tạo cuộc trò chuyện, gắn cho cả hai.
+- `unpair()` — gỡ cả hai, xoá tin nhắn + cuộc trò chuyện.
+
+Muốn xem/sửa dữ liệu: **Table Editor** trong dashboard. Muốn xoá sạch: `truncate public.messages,
+public.conversations; update public.profiles set conversation_id = null;`.
+
+## 6. Xử lý sự cố
+
+| Hiện tượng | Nguyên nhân / cách sửa |
 |---|---|
-| Emulator | `http://10.0.2.2:3000` (mặc định) |
-| Máy thật cùng Wi-Fi | `http://<IP LAN của máy tính>:3000`, ví dụ `http://192.168.1.10:3000` |
-| Server công khai | `https://chat.example.com` (nên dùng HTTPS → app tự dùng `wss://`) |
+| `422 Signup requires a valid password` khi bấm Ẩn danh | chưa bật *Allow anonymous sign-ins* trong Authentication → Providers |
+| `Không tìm thấy hồ sơ` | chưa chạy `supabase/schema.sql` (hoặc chạy thiếu phần trigger) |
+| Đăng nhập báo sai mật khẩu dù đúng | tài khoản tạo lúc bật *Confirm email* → mở mail xác nhận trước |
+| Tin nhắn không hiện ngay, chỉ sau vài giây | Realtime chưa bật cho bảng: chạy lại `schema.sql` (phần realtime) hoặc chạy `alter publication supabase_realtime add table public.messages;` |
+| `Không có quyền truy cập` (403) | sai/thiếu `anon key`, hoặc đã đổi policy — chạy lại `schema.sql` |
+| Mã mời "không đúng" | mã gồm 6 ký tự, không có chữ I/O/0/1; nhập đúng mã đang hiện trên máy người kia |
+| Bấm Ẩn danh nhưng muốn giữ tài khoản | tài khoản ẩn danh gắn với máy; đăng xuất là mất, hãy dùng email + mật khẩu nếu cần giữ |
 
-App đã bật `usesCleartextTraffic` để chat được với server HTTP trong LAN khi phát triển.
-Khi đưa lên Internet, hãy đặt sau reverse proxy có HTTPS (Caddy/Nginx) và **tắt** cleartext.
+## 7. Giới hạn đã biết
 
-### Thử nhanh trong trình duyệt
-
-Web client ở địa chỉ của server. Mở hai cửa sổ (một cửa sổ ẩn danh), tạo hai tài khoản,
-nhập mã mời của nhau, rồi chat — realtime, “Đã xem”, “Đang nhập…” hoạt động y như app.
-
-## API
-
-Tất cả dưới `/api`, JSON, xác thực bằng `Authorization: Bearer <token>`.
-
-| Method | Path | Việc |
-|---|---|---|
-| POST | `/auth/register` | `{username, password, displayName}` → `{token, user, partner}` |
-| POST | `/auth/login` | `{username, password}` → `{token, user, partner}` |
-| POST | `/auth/logout` | huỷ token hiện tại |
-| GET | `/me` | `{user, partner}` |
-| GET | `/pair/code` | mã mời của bạn |
-| POST | `/pair` | `{code}` → ghép đôi |
-| POST | `/pair/reset` | huỷ ghép đôi (xoá hội thoại) |
-| GET | `/conversation` | `{user, partner, messages[]}` (400 tin gần nhất) |
-| POST | `/messages` | `{body, clientId}` → tin đã lưu (clientId chống trùng) |
-| POST | `/read` | `{lastMessageId}` → đánh dấu đã xem |
-| POST | `/typing` | báo đang nhập |
-| POST | `/profile` | `{displayName?, color?}` |
-| GET | `/health` | kiểm tra sống |
-
-WebSocket: `ws(s)://<host>/ws?token=<token>`. Server gửi `hello`, `message`, `read`,
-`typing`, `presence`, `paired`, `unpaired`, `profile`; client gửi `typing`, `read`, `ping`.
-
-## Kiểm thử
-
-- `server/test/smoke.mjs` — 16 bước end-to-end (REST + WebSocket): `npm run smoke`.
-- `server/test/web-client.mjs` — chạy web client thật trong jsdom: đăng ký → ghép đôi → nhận tin
-  realtime → gửi tin → “Đã xem” → presence: `npm run test:web` (hoặc `npm test` cho cả hai).
-- `android/app/src/test/` — JUnit: `ChatItemsTest`, `TimeFormatTest`, `RelativeTimeTest`.
-- GitHub Actions: `.github/workflows/server.yml` (smoke test) và `android.yml` (unit test + APK debug).
-
-## Ghi chú
-
-- App chưa được biên dịch trong môi trường soạn code này (không có Android SDK). Nếu
-  `./gradlew assembleDebug` báo lỗi, gửi log để sửa — server đã được chạy và test thật.
-- Bản quyền hình ảnh/emoji không liên quan; icon app là vector tự vẽ.
-- Muốn có thông báo khi app đóng: thêm Firebase Cloud Messaging ở server (gửi push khi có
-  tin mới) và đăng ký token ở app — kiến trúc hiện tại đã tách sẵn phần gửi tin trong
-  `ChatRepository`/`AppViewModel` để gắn vào.
+- Đúng hai người mỗi cuộc trò chuyện (đúng như thiết kế), không nhóm, không danh bạ.
+- Ảnh/file: chưa hỗ trợ (schema đã sẵn sàng để thêm Storage sau này).
+- Thông báo đẩy (push) khi app đóng: chưa có — cần FCM.
+- Nội dung tin nhắn không mã hoá đầu-cuối; Supabase (bạn) đọc được trong database.
+- Lịch sử tải 300 tin gần nhất mỗi lần mở cuộc trò chuyện.

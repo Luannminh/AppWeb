@@ -1,13 +1,13 @@
 package com.twchat.app.data
 
-import com.twchat.app.data.remote.RemoteMessage
+import com.twchat.app.data.supabase.RemoteMessage
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Local cache in front of the server. Writing through Room (instead of holding
- * messages in memory) is what makes the app feel like a real messenger: the list
- * survives restarts, pending messages stay visible and retries reuse the same
- * [Message.clientId] so the server never duplicates a message.
+ * Room cache in front of Supabase. Writing through the cache (instead of holding
+ * messages in memory) is what makes the app feel like a real messenger: opening
+ * it shows history instantly, pending messages survive a restart, and retries
+ * reuse [Message.clientId] so Postgres never stores the same message twice.
  */
 class ChatRepository(private val dao: MessageDao) {
 
@@ -15,7 +15,7 @@ class ChatRepository(private val dao: MessageDao) {
 
     suspend fun snapshot(): List<Message> = dao.getAll()
 
-    suspend fun addPending(clientId: String, body: String, myId: Long) {
+    suspend fun addPending(clientId: String, body: String, myId: String) {
         dao.upsert(
             Message(
                 clientId = clientId,
@@ -42,7 +42,7 @@ class ChatRepository(private val dao: MessageDao) {
         if (remotes.isNotEmpty()) dao.upsertAll(remotes.map { it.toEntity() })
     }
 
-    suspend fun applyReadReceipt(myId: Long, upToServerId: Long, readAt: Long) =
+    suspend fun applyReadReceipt(myId: String, upToServerId: Long, readAt: Long) =
         dao.applyReadReceipt(myId, upToServerId, readAt)
 
     suspend fun clear() = dao.clear()

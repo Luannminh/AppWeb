@@ -24,12 +24,12 @@ interface MessageDao {
     @Query("UPDATE messages SET status = :status WHERE clientId = :clientId")
     suspend fun setStatus(clientId: String, status: String)
 
-    /** Marks my messages as read by the partner, up to a given server id. */
+    /** Marks my messages as read by the partner, up to a given Postgres id. */
     @Query(
         "UPDATE messages SET readAt = :readAt " +
             "WHERE senderId = :myId AND serverId IS NOT NULL AND serverId <= :upToServerId AND readAt IS NULL",
     )
-    suspend fun applyReadReceipt(myId: Long, upToServerId: Long, readAt: Long)
+    suspend fun applyReadReceipt(myId: String, upToServerId: Long, readAt: Long)
 
     @Query("DELETE FROM messages")
     suspend fun clear()
