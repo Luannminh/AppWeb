@@ -59,7 +59,18 @@ data class RemoteMessage(
     val durationMs: Int? = null,
     val editedAt: Long? = null,
     val deletedAt: Long? = null,
-)
+) {
+    /** Text used by notifications. */
+    val preview: String
+        get() = when {
+            deletedAt != null -> "Tin nhắn đã được thu hồi"
+            kind == MessageKindFields.STICKER -> sticker ?: body
+            kind == MessageKindFields.IMAGE -> "📷 Ảnh"
+            kind == MessageKindFields.VOICE -> "🎤 Tin nhắn thoại"
+            kind == MessageKindFields.FILE -> "📎 ${attachmentName ?: "Tệp"}"
+            else -> body
+        }
+}
 
 /** Kind values, kept in sync with the `messages_kind_check` constraint. */
 object MessageKindFields {
