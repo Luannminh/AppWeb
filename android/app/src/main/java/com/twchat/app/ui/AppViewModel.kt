@@ -38,7 +38,9 @@ data class LiveState(
     fun isTyping(now: Long = System.currentTimeMillis()): Boolean = typingUntil > now
 
     fun partnerOnline(now: Long = System.currentTimeMillis()): Boolean =
-        lastPresenceAt > 0 && now - lastPresenceAt < 45_000
+        // Broadcast presence when realtime works, refreshed last_seen otherwise.
+        (lastPresenceAt > 0 && now - lastPresenceAt < 45_000) ||
+            (partnerLastSeen > 0 && now - partnerLastSeen < 90_000)
 }
 
 /** One-shot UI signals (spinners, snackbars) plus the current sub-screen. */

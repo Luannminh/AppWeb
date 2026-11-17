@@ -236,9 +236,20 @@ create policy messages_update on public.messages
 
 grant usage on schema public to anon, authenticated;
 
-grant select, insert, update on public.messages      to authenticated;
-grant select, update         on public.profiles      to authenticated;
+-- Supabase cấp sẵn nhiều quyền cho anon/authenticated: thu hồi rồi cấp lại đúng
+-- mức cần thiết. Đặc biệt: client KHÔNG được sửa invite_code / conversation_id
+-- (chỉ RPC với quyền definer mới đổi được), nếu không sẽ tự gắn mình vào cuộc
+-- trò chuyện của người khác.
+revoke all on public.messages      from anon, authenticated;
+revoke all on public.profiles      from anon, authenticated;
+revoke all on public.conversations from anon, authenticated;
+
+grant select, insert, update on public.messages to authenticated;
 grant select                 on public.conversations to authenticated;
+
+grant select on public.profiles to authenticated;
+grant update (display_name, color, last_seen) on public.profiles to authenticated;
+
 grant usage, select on all sequences in schema public to authenticated;
 
 grant execute on function public.my_conversation()   to authenticated;

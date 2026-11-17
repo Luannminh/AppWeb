@@ -148,9 +148,10 @@ class SupabaseApi {
             rest(
                 "GET",
                 "/rest/v1/messages?conversation_id=eq.$conversationId" +
-                    "&select=id,client_id,sender_id,body,created_at,read_at&order=id.asc&limit=$limit",
+                    "&select=id,client_id,sender_id,body,created_at,read_at&order=id.desc&limit=$limit",
             ),
         ).mapNotNull { row -> runCatching { SupabaseMapping.message(row) }.getOrNull() }
+            .sortedBy { it.id }
 
     suspend fun sendMessage(
         conversationId: String,
