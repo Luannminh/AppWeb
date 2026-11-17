@@ -12,6 +12,10 @@ on:
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,14 +36,35 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Unit tests
-        run: ./gradlew test --stacktrace
+        run: ./gradlew test --stacktrace 2>&1 | tee gradle.log
 
       - name: Assemble debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        if: success()
+        run: ./gradlew assembleDebug --stacktrace 2>&1 | tee -a gradle.log
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: twchat-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # Makes compiler/test output readable from the pull request itself, which
+      # is handy when the job log is not reachable.
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f gradle.log ] && [ -n "$PR_NUMBER" ]; then
+            {
+              echo "### ❌ Android build failed"
+              echo
+              echo '```'
+              tail -c 12000 gradle.log
+              echo '```'
+            } > report.md
+            gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" -F body=@report.md
+          fi
